@@ -8075,6 +8075,7 @@ Outcome: Eliminated`;
   function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd, allEvents, useCelsius, onUnitToggle, teamCode, fleets = [], activeSessionId, onSetActiveSession, activeTestId, onSetActiveTest }) {
     const [tab, setTab] = useState("sessions");
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [addingSession, setAddingSession] = useState(false);
     const setActiveSessionId = onSetActiveSession || (() => {
     });
     function upd(patch) {
@@ -8224,66 +8225,75 @@ Outcome: Eliminated`;
         },
         "\xD7"
       ))));
-    }), (() => {
-      const [addingSession, setAddingSession] = React.useState(false);
-      const existingSessions = event.sessions || [];
-      if (!addingSession) {
-        return /* @__PURE__ */ React.createElement(
-          "button",
-          {
-            className: "btn-ghost",
-            onClick: () => setAddingSession(true),
-            style: { width: "100%", marginTop: 8, padding: "14px 0", fontSize: 14, fontWeight: 600 }
+    }), !addingSession ? /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: "btn-ghost",
+        onClick: () => setAddingSession(true),
+        style: { width: "100%", marginTop: 8, padding: "14px 0", fontSize: 14, fontWeight: 600 }
+      },
+      "+ New Session"
+    ) : /* @__PURE__ */ React.createElement("div", { style: {
+      background: "var(--paper-2)",
+      borderRadius: 8,
+      padding: 16,
+      marginTop: 8,
+      border: "1.5px solid var(--rule)"
+    } }, (event.sessions || []).length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Lbl, null, "Copy from existing session"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 8, lineHeight: 1.5 } }, "Copies all tests with fleet and products pre-filled. Clears results and temps."), /* @__PURE__ */ React.createElement("div", { style: {
+      maxHeight: 200,
+      overflowY: "auto",
+      background: "var(--paper-3)",
+      borderRadius: 6,
+      marginBottom: 12,
+      border: "1px solid var(--rule)"
+    } }, (event.sessions || []).map((s) => {
+      const tc = (s.tests || []).length;
+      const skiCount = (s.tests || []).reduce((n, t) => n + (t.skis || []).length, 0);
+      return /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          key: s.id,
+          onClick: () => {
+            const copy = copySession(s, event.sessions || []);
+            upd({ sessions: [...event.sessions || [], copy] });
+            setAddingSession(false);
+            setActiveSessionId(copy.id);
           },
-          "+ New Session"
-        );
-      }
-      return /* @__PURE__ */ React.createElement("div", { style: {
-        background: "var(--paper-2)",
-        borderRadius: 8,
-        padding: 16,
-        marginTop: 8,
-        border: "1.5px solid var(--rule)"
-      } }, existingSessions.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Lbl, null, "Copy from existing session"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 8, lineHeight: 1.5 } }, "Copies all tests with fleet and products pre-filled. Clears results and temps."), /* @__PURE__ */ React.createElement("div", { style: {
-        maxHeight: 200,
-        overflowY: "auto",
-        background: "var(--paper-3)",
-        borderRadius: 6,
-        marginBottom: 12,
-        border: "1px solid var(--rule)"
-      } }, existingSessions.map((s) => {
-        const tc = (s.tests || []).length;
-        const skiCount = (s.tests || []).reduce((n, t) => n + (t.skis || []).length, 0);
-        return /* @__PURE__ */ React.createElement(
-          "button",
-          {
-            key: s.id,
-            onClick: () => {
-              const copy = copySession(s, event.sessions || []);
-              upd({ sessions: [...event.sessions || [], copy] });
-              setAddingSession(false);
-              setActiveSessionId(copy.id);
-            },
-            style: {
-              display: "block",
-              width: "100%",
-              textAlign: "left",
-              padding: "9px 12px",
-              background: "none",
-              border: "none",
-              borderBottom: "1px solid var(--rule)",
-              cursor: "pointer"
-            },
-            className: "btn-text"
+          style: {
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            padding: "9px 12px",
+            background: "none",
+            border: "none",
+            borderBottom: "1px solid var(--rule)",
+            cursor: "pointer"
           },
-          /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, fontSize: 13 } }, s.name),
-          /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 1 } }, tc, " test", tc !== 1 ? "s" : "", " \xB7 ", skiCount, " ski", skiCount !== 1 ? "s" : "")
-        );
-      })), /* @__PURE__ */ React.createElement(Hr, { style: { margin: "0 0 12px" } })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: () => {
-        addSession();
-        setAddingSession(false);
-      } }, "Blank Session"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: () => setAddingSession(false) }, "Cancel")));
-    })(), /* @__PURE__ */ React.createElement(
+          className: "btn-text"
+        },
+        /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, fontSize: 13 } }, s.name),
+        /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 1 } }, tc, " test", tc !== 1 ? "s" : "", " \xB7 ", skiCount, " ski", skiCount !== 1 ? "s" : "")
+      );
+    })), /* @__PURE__ */ React.createElement(Hr, { style: { margin: "0 0 12px" } })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: "btn",
+        style: { flex: 2 },
+        onClick: () => {
+          addSession();
+          setAddingSession(false);
+        }
+      },
+      "Blank Session"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: "btn-ghost",
+        style: { flex: 1 },
+        onClick: () => setAddingSession(false)
+      },
+      "Cancel"
+    ))), /* @__PURE__ */ React.createElement(
       GuidanceBanner,
       {
         storageKey: "waxlab:guide:sessions",
@@ -9078,10 +9088,15 @@ Outcome: Eliminated`;
       Object.values(timersRef.current).forEach(clearTimeout);
       timersRef.current = {};
       const now = Date.now();
+      const safeMs = (iso) => {
+        if (!iso) return null;
+        const ms = new Date(iso).getTime();
+        return isNaN(ms) ? null : ms;
+      };
       (schedule || []).forEach((w) => {
-        const start = w.windowStart ? new Date(w.windowStart).getTime() : null;
-        const resultBy = w.resultBy ? new Date(w.resultBy).getTime() : null;
-        const close = w.windowClose ? new Date(w.windowClose).getTime() : null;
+        const start = safeMs(w.windowStart);
+        const resultBy = safeMs(w.resultBy);
+        const close = safeMs(w.windowClose);
         const warn = resultBy ? resultBy - (w.warnMinutes || 15) * 6e4 : null;
         function scheduleAt(key, ms, type) {
           if (ms == null || ms <= now) return;
@@ -9112,18 +9127,25 @@ Outcome: Eliminated`;
       return () => clearInterval(t);
     }, []);
     const now = Date.now();
+    const safeMs = (iso) => {
+      if (!iso) return null;
+      const ms = new Date(iso).getTime();
+      return isNaN(ms) ? null : ms;
+    };
     const active = (schedule || []).filter((w) => {
-      const s = w.windowStart ? new Date(w.windowStart).getTime() : 0;
-      const c = w.windowClose ? new Date(w.windowClose).getTime() : Infinity;
+      const s = safeMs(w.windowStart) ?? 0;
+      const c = safeMs(w.windowClose) ?? Infinity;
       return now >= s && now <= c;
     });
     const upcoming = (schedule || []).filter((w) => {
-      const s = w.windowStart ? new Date(w.windowStart).getTime() : 0;
-      return s > now;
-    }).sort((a, b) => new Date(a.windowStart) - new Date(b.windowStart));
+      const s = safeMs(w.windowStart);
+      return s != null && s > now;
+    }).sort((a, b) => (safeMs(a.windowStart) || 0) - (safeMs(b.windowStart) || 0));
     if (active.length === 0 && upcoming.length === 0) return null;
     function minsUntil(iso) {
-      const ms = new Date(iso).getTime() - now;
+      const t = safeMs(iso);
+      if (t == null) return "?";
+      const ms = t - now;
       if (ms <= 0) return "now";
       const m = Math.round(ms / 6e4);
       if (m < 60) return `${m}m`;
@@ -9253,7 +9275,15 @@ Outcome: Eliminated`;
     );
   }
   function WindowEditor({ win, onSave, onCancel, eventDate }) {
-    const base = eventDate ? eventDate.slice(0, 10) : (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const base = (() => {
+      if (eventDate) {
+        const iso = eventDate.slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(iso) && !isNaN(new Date(iso))) return iso;
+        const d = new Date(eventDate);
+        if (!isNaN(d)) return d.toISOString().slice(0, 10);
+      }
+      return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    })();
     const toLocal = (iso) => {
       if (!iso) return "";
       const d = new Date(iso);
@@ -9388,17 +9418,22 @@ Outcome: Eliminated`;
   }
   function ScheduleTimeline({ schedule }) {
     if (!schedule?.length) return null;
-    const times = schedule.flatMap((w) => [w.windowStart, w.windowClose].filter(Boolean));
+    const validTime = (iso) => {
+      if (!iso) return null;
+      const ms = new Date(iso).getTime();
+      return isNaN(ms) ? null : ms;
+    };
+    const times = schedule.flatMap((w) => [validTime(w.windowStart), validTime(w.windowClose)].filter(Boolean));
     if (times.length < 2) return null;
-    const minT = Math.min(...times.map((t) => new Date(t).getTime()));
-    const maxT = Math.max(...times.map((t) => new Date(t).getTime()));
+    const minT = Math.min(...times);
+    const maxT = Math.max(...times);
     const span = maxT - minT || 1;
     const now = Date.now();
     const TYPE_COLORS = { glide: "var(--blue)", kick: "var(--green)", "glide-out": "var(--amber)" };
     const rows = [];
     const placed = schedule.map((w) => {
-      const s = w.windowStart ? new Date(w.windowStart).getTime() : minT;
-      const c = w.windowClose ? new Date(w.windowClose).getTime() : maxT;
+      const s = validTime(w.windowStart) ?? minT;
+      const c = validTime(w.windowClose) ?? maxT;
       let row = 0;
       while (rows[row]?.some((r) => r.s < c && r.c > s)) row++;
       if (!rows[row]) rows[row] = [];
@@ -9553,12 +9588,19 @@ Outcome: Eliminated`;
     const editingWin = editingId && editingId !== "new" ? schedule.find((w) => w.id === editingId) : null;
     function fmtTimeLocal(iso) {
       if (!iso) return "\u2014";
-      return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      const d = new Date(iso);
+      if (isNaN(d)) return "\u2014";
+      return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
     }
     function windowStatus(w) {
       const now = Date.now();
-      const s = w.windowStart ? new Date(w.windowStart).getTime() : null;
-      const c = w.windowClose ? new Date(w.windowClose).getTime() : null;
+      const safeMs = (iso) => {
+        if (!iso) return null;
+        const ms = new Date(iso).getTime();
+        return isNaN(ms) ? null : ms;
+      };
+      const s = safeMs(w.windowStart);
+      const c = safeMs(w.windowClose);
       if (!s) return null;
       if (now < s) return { label: "upcoming", color: "var(--ink-faint)" };
       if (c && now > c) return { label: "closed", color: "var(--red)" };
