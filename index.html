@@ -9109,6 +9109,15 @@ Outcome: Eliminated`;
     { id: "kick", label: "Kick" },
     { id: "glide-out", label: "Glide Out" }
   ];
+  var SCHED_SUBTYPES = {
+    "glide": ["Topcoat", "Paraffin", "Hand structure", "Grind"],
+    "kick": ["Binder", "Mid layer", "Top layer", "Full stack"],
+    "glide-out": []
+  };
+  function resolveTestEntries(w) {
+    if (w.testEntries?.length) return w.testEntries;
+    return (w.testTypes || []).map((cat) => ({ id: cat, category: cat, type: "" }));
+  }
   function useScheduleAlerts(schedule, onAlert) {
     const timersRef = useRef({});
     const alertedRef = useRef(/* @__PURE__ */ new Set());
@@ -9294,7 +9303,14 @@ Outcome: Eliminated`;
           marginBottom: 6
         } }, titles[type]),
         /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800, marginBottom: 4 } }, schedWin.label || "Testing Window"),
-        schedWin.testTypes?.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginBottom: 8 } }, schedWin.testTypes.map((t) => SCHED_TEST_TYPES.find((x) => x.id === t)?.label || t).join(" \xB7 ")),
+        (() => {
+          const entries = resolveTestEntries(schedWin);
+          if (!entries.length) return null;
+          return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginBottom: 8 } }, entries.map((e) => {
+            const cl = SCHED_TEST_TYPES.find((t) => t.id === e.category)?.label || e.category;
+            return e.type ? `${cl} \u2014 ${e.type}` : cl;
+          }).join(" \xB7 "));
+        })(),
         type === "warn" && schedWin.resultBy && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--amber)", marginBottom: 8 } }, "Result needed by ", fmtTime(schedWin.resultBy)),
         schedWin.notes && /* @__PURE__ */ React.createElement("div", { style: {
           fontSize: 12,
@@ -9338,11 +9354,18 @@ Outcome: Eliminated`;
     const [startTime, setStartTime] = useState(toLocal(win.windowStart));
     const [closeTime, setCloseTime] = useState(toLocal(win.windowClose));
     const [resultTime, setResultTime] = useState(toLocal(win.resultBy));
-    const [testTypes, setTestTypes] = useState(win.testTypes || []);
+    const [testEntries, setTestEntries] = useState(() => resolveTestEntries(win));
+    const [pendingCat, setPendingCat] = useState("glide");
+    const [pendingType, setPendingType] = useState("");
     const [warnMinutes, setWarnMinutes] = useState(win.warnMinutes ?? 15);
     const [notes, setNotes] = useState(win.notes || "");
-    function toggleType(id) {
-      setTestTypes((prev) => prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]);
+    function addEntry() {
+      const entry = { id: uid(), category: pendingCat, type: pendingType };
+      setTestEntries((prev) => [...prev, entry]);
+      setPendingType("");
+    }
+    function removeEntry(id) {
+      setTestEntries((prev) => prev.filter((e) => e.id !== id));
     }
     function save() {
       onSave({
@@ -9351,12 +9374,14 @@ Outcome: Eliminated`;
         windowStart: fromLocal(startTime),
         windowClose: fromLocal(closeTime),
         resultBy: fromLocal(resultTime) || fromLocal(closeTime),
-        testTypes,
+        testEntries,
+        // Keep testTypes in sync for backward-compat (timeline colors etc.)
+        testTypes: [...new Set(testEntries.map((e) => e.category))],
         warnMinutes: Number(warnMinutes) || 15,
         notes
       });
     }
-    const canSave = startTime && closeTime && testTypes.length > 0;
+    const canSave = startTime && closeTime && testEntries.length > 0;
     return /* @__PURE__ */ React.createElement("div", { style: {
       background: "var(--paper-2)",
       borderRadius: 10,
@@ -9398,25 +9423,63 @@ Outcome: Eliminated`;
         onChange: (e) => setResultTime(e.target.value),
         placeholder: closeTime
       }
-    ))), /* @__PURE__ */ React.createElement(Lbl, null, "Test types in this window"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" } }, SCHED_TEST_TYPES.map((t) => /* @__PURE__ */ React.createElement(
-      "button",
+    ))), /* @__PURE__ */ React.createElement(Lbl, null, "Tests in this window"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 8, lineHeight: 1.5 } }, "Each entry becomes one test in the session. Add the same category multiple times with different subtypes (e.g. Glide Topcoat + Glide Paraffin)."), testEntries.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+      background: "var(--paper-3)",
+      borderRadius: 6,
+      border: "1px solid var(--rule)",
+      marginBottom: 8
+    } }, testEntries.map((e, i) => {
+      const catLabel = SCHED_TEST_TYPES.find((t) => t.id === e.category)?.label || e.category;
+      return /* @__PURE__ */ React.createElement("div", { key: e.id, style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "7px 10px",
+        borderBottom: i < testEntries.length - 1 ? "1px solid var(--rule)" : "none"
+      } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 12, fontWeight: 600 } }, catLabel, e.type ? /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 400, color: "var(--ink-faint)" } }, " \u2014 ", e.type) : null), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => removeEntry(e.id),
+          className: "btn-text",
+          style: { fontSize: 16, lineHeight: 1 }
+        },
+        "\xD7"
+      ));
+    })), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 6, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Category"), /* @__PURE__ */ React.createElement(
+      "select",
       {
-        key: t.id,
-        onClick: () => toggleType(t.id),
-        style: {
-          padding: "6px 14px",
-          borderRadius: 6,
-          fontSize: 12,
-          fontWeight: 600,
-          cursor: "pointer",
-          border: "1.5px solid",
-          background: testTypes.includes(t.id) ? "var(--accent)" : "var(--paper-3)",
-          color: testTypes.includes(t.id) ? "#fff" : "var(--ink)",
-          borderColor: testTypes.includes(t.id) ? "var(--accent)" : "var(--rule)"
+        className: "inp",
+        value: pendingCat,
+        onChange: (e) => {
+          setPendingCat(e.target.value);
+          setPendingType("");
         }
       },
-      t.label
-    ))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Warn before result (min)"), /* @__PURE__ */ React.createElement(
+      SCHED_TEST_TYPES.map((t) => /* @__PURE__ */ React.createElement("option", { key: t.id, value: t.id }, t.label))
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Subtype (optional)"), /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        className: "inp",
+        value: pendingType,
+        onChange: (e) => setPendingType(e.target.value)
+      },
+      /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 any \u2014"),
+      (SCHED_SUBTYPES[pendingCat] || []).map((s) => /* @__PURE__ */ React.createElement("option", { key: s, value: s }, s))
+    )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-end" } }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: "btn-ghost",
+        onClick: addEntry,
+        style: {
+          padding: "8px 14px",
+          fontSize: 13,
+          fontWeight: 700,
+          minHeight: 38,
+          whiteSpace: "nowrap"
+        }
+      },
+      "+ Add"
+    ))), testEntries.length > 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--accent)", marginBottom: 10, fontWeight: 600 } }, "\u2192 ", testEntries.length, " test", testEntries.length !== 1 ? "s" : "", " will be created in this session") : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--red)", marginBottom: 10 } }, "Add at least one test"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Warn before result (min)"), /* @__PURE__ */ React.createElement(
       "input",
       {
         className: "inp",
@@ -9701,20 +9764,25 @@ Outcome: Eliminated`;
       const unactivated = schedule.filter((w) => !w.activated);
       if (!unactivated.length) return;
       const newSessions = unactivated.map((w) => {
-        const testStubs = (w.testTypes || []).map((cat) => ({
-          id: uid(),
-          name: `${w.label || "Test"} \u2014 ${SCHED_TEST_TYPES.find((t) => t.id === cat)?.label || cat}`,
-          category: cat,
-          type: "",
-          skis: [],
-          snowTemps: [],
-          airTemps: [],
-          notes: "",
-          createdAt: nowStr(),
-          deadline: w.resultBy || w.windowClose || null,
-          deadlineLabel: w.label ? `Result needed: ${w.label}` : "Result deadline",
-          scheduleWindowId: w.id
-        }));
+        const entries = resolveTestEntries(w);
+        const testStubs = entries.map((e) => {
+          const catLabel = SCHED_TEST_TYPES.find((t) => t.id === e.category)?.label || e.category;
+          const subLabel = e.type ? ` \u2014 ${e.type}` : "";
+          return {
+            id: uid(),
+            name: `${w.label || catLabel}${subLabel}`,
+            category: e.category,
+            type: e.type || "",
+            skis: [],
+            snowTemps: [],
+            airTemps: [],
+            notes: "",
+            createdAt: nowStr(),
+            deadline: w.resultBy || w.windowClose || null,
+            deadlineLabel: w.label ? `Result needed: ${w.label}` : "Result deadline",
+            scheduleWindowId: w.id
+          };
+        });
         return {
           id: uid(),
           name: w.label || `Window ${w.windowStart ? fmtTime(w.windowStart) : ""}`,
@@ -9792,19 +9860,26 @@ Outcome: Eliminated`;
         color: status.color,
         textTransform: "uppercase",
         letterSpacing: "0.06em"
-      } }, status.label), w.activated && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--green)", fontWeight: 600 } }, "\u2713 sessions created")), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 3 } }, fmtTimeLocal(w.windowStart), " \u2192 ", fmtTimeLocal(w.windowClose), w.resultBy && w.resultBy !== w.windowClose && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--amber)" } }, " \xB7 result by ", fmtTimeLocal(w.resultBy))), w.testTypes?.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" } }, w.testTypes.map((t) => /* @__PURE__ */ React.createElement("span", { key: t, style: {
-        fontSize: 10,
-        fontWeight: 600,
-        padding: "2px 8px",
-        borderRadius: 4,
-        background: "var(--paper-3)",
-        border: "1px solid var(--rule)",
-        color: "var(--ink-mid)"
-      } }, SCHED_TEST_TYPES.find((x) => x.id === t)?.label || t)), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
-        fontSize: 10,
-        color: "var(--ink-faint)",
-        padding: "2px 6px"
-      } }, "\u23F1 warn ", w.warnMinutes || 15, "m before")), w.notes && /* @__PURE__ */ React.createElement("div", { style: {
+      } }, status.label), w.activated && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--green)", fontWeight: 600 } }, "\u2713 sessions created")), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 3 } }, fmtTimeLocal(w.windowStart), " \u2192 ", fmtTimeLocal(w.windowClose), w.resultBy && w.resultBy !== w.windowClose && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--amber)" } }, " \xB7 result by ", fmtTimeLocal(w.resultBy))), (() => {
+        const entries = resolveTestEntries(w);
+        if (!entries.length) return null;
+        return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" } }, entries.map((e, i2) => {
+          const catLabel = SCHED_TEST_TYPES.find((t) => t.id === e.category)?.label || e.category;
+          return /* @__PURE__ */ React.createElement("span", { key: e.id || i2, style: {
+            fontSize: 10,
+            fontWeight: 600,
+            padding: "2px 8px",
+            borderRadius: 4,
+            background: "var(--paper-3)",
+            border: "1px solid var(--rule)",
+            color: "var(--ink-mid)"
+          } }, catLabel, e.type ? ` \u2014 ${e.type}` : "");
+        }), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+          fontSize: 10,
+          color: "var(--ink-faint)",
+          padding: "2px 6px"
+        } }, "\u23F1 warn ", w.warnMinutes || 15, "m before"));
+      })(), w.notes && /* @__PURE__ */ React.createElement("div", { style: {
         fontSize: 11,
         color: "var(--ink-faint)",
         marginTop: 4,
@@ -9959,9 +10034,27 @@ Outcome: Eliminated`;
     } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 6 } }, "Create sessions from schedule?"), /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 12,
       color: "var(--ink-mid)",
-      marginBottom: 12,
+      marginBottom: 8,
       lineHeight: 1.6
-    } }, "This will create ", unactivatedCount, " session", unactivatedCount !== 1 ? "s" : "", " with test stubs, deadlines, and names pre-filled from your ", unactivatedCount, " unactivated window", unactivatedCount !== 1 ? "s" : "", ". Existing sessions are not affected."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: activateSchedule, style: { flex: 2 } }, "Confirm \u2014 Create Sessions"), /* @__PURE__ */ React.createElement(
+    } }, "This will create ", unactivatedCount, " session", unactivatedCount !== 1 ? "s" : "", " with test stubs pre-filled from your schedule. Existing sessions are not affected."), /* @__PURE__ */ React.createElement("div", { style: {
+      background: "var(--paper-3)",
+      borderRadius: 6,
+      padding: "8px 10px",
+      marginBottom: 12,
+      fontSize: 11,
+      lineHeight: 1.8
+    } }, schedule.filter((w) => !w.activated).map((w) => {
+      const entries = resolveTestEntries(w);
+      return /* @__PURE__ */ React.createElement("div", { key: w.id, style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        gap: 8
+      } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600 } }, w.label || "Window"), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, entries.map((e) => {
+        const cl = SCHED_TEST_TYPES.find((t) => t.id === e.category)?.label || e.category;
+        return e.type ? `${cl} \u2014 ${e.type}` : cl;
+      }).join(", ") || "\u2014", " \xB7 ", entries.length, " test", entries.length !== 1 ? "s" : ""));
+    })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: activateSchedule, style: { flex: 2 } }, "Confirm \u2014 Create Sessions"), /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn-ghost",
