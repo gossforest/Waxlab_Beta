@@ -61,10 +61,26 @@ var AppBundle = (() => {
         ...other,
         ...richer,
         ratings: mergeRatings(sa.ratings, sb.ratings),
+        raterScores: mergeRaterScores(sa.raterScores, sb.raterScores),
         feelNotes: sa.feelNotes || sb.feelNotes || "",
         photos
       };
     });
+  }
+  function mergeRaterScores(rsA, rsB) {
+    const a = rsA || [], b = rsB || [];
+    const map = {};
+    [...a, ...b].forEach((r) => {
+      if (!r.rater) return;
+      const ex = map[r.rater];
+      if (!ex) {
+        map[r.rater] = { ...r };
+        return;
+      }
+      if (r.kick != null && ex.kick == null) ex.kick = r.kick;
+      if (r.glide != null && ex.glide == null) ex.glide = r.glide;
+    });
+    return Object.values(map);
   }
   function mergeRatings(rA, rB) {
     const a = rA || {}, b = rB || {};
@@ -76,6 +92,15 @@ var AppBundle = (() => {
       else out[k] = Math.max(a[k], b[k]);
     });
     return out;
+  }
+  function deriveRatings(raterScores) {
+    if (!raterScores || !raterScores.length) return {};
+    const kicks = raterScores.map((r) => r.kick).filter((v) => v != null);
+    const glides = raterScores.map((r) => r.glide).filter((v) => v != null);
+    return {
+      kick: kicks.length ? Math.round(kicks.reduce((a, b) => a + b, 0) / kicks.length * 10) / 10 : null,
+      glide: glides.length ? Math.round(glides.reduce((a, b) => a + b, 0) / glides.length * 10) / 10 : null
+    };
   }
   function mergeRounds(roundsA, roundsB) {
     const all = [...roundsA || [], ...roundsB || []];
@@ -322,20 +347,24 @@ var AppBundle = (() => {
       ex.find((e) => e.id === stamped.id) ? ex.map((e) => e.id === stamped.id ? stamped : e) : [...ex, stamped]
     );
     if (db) {
-      db.from("waxlab_events").upsert(
+      return db.from("waxlab_events").upsert(
         { id: stamped.id, team_code: teamCode, data: stamped, updated_at: stamped._savedAt },
         { onConflict: "id" }
       ).then(({ error }) => {
         if (error) {
           console.warn("saveEvent bg:", error.message);
           queueWrite(teamCode, stamped);
-        } else dequeueWrite(stamped.id);
+          return false;
+        }
+        dequeueWrite(stamped.id);
+        return true;
       }).catch((e) => {
         console.warn("saveEvent bg:", e.message);
         queueWrite(teamCode, stamped);
+        return false;
       });
     }
-    return true;
+    return Promise.resolve(true);
   }
   var ANALYTICS_TABLE = "waxlab_analytics";
   var DEVICE_ID_KEY = "waxlab:device_id";
@@ -359,7 +388,7 @@ var AppBundle = (() => {
   async function ping(teamCode, eventType, payload = {}) {
     if (!db || !navigator.onLine) return;
     try {
-      await db.from(ANALYTICS_TABLE).insert({
+      const { error } = await db.from(ANALYTICS_TABLE).insert({
         device_id: getDeviceId(),
         team_code: teamCode,
         event_type: eventType,
@@ -367,7 +396,22 @@ var AppBundle = (() => {
         payload,
         ts: (/* @__PURE__ */ new Date()).toISOString()
       });
+      if (error) {
+        try {
+          lsSet("waxlab:lastPingError", { msg: error.message, code: error.code, ts: (/* @__PURE__ */ new Date()).toISOString(), eventType });
+        } catch (e2) {
+        }
+      } else {
+        try {
+          lsSet("waxlab:lastPingError", null);
+        } catch (e2) {
+        }
+      }
     } catch (e) {
+      try {
+        lsSet("waxlab:lastPingError", { msg: e.message, ts: (/* @__PURE__ */ new Date()).toISOString(), eventType });
+      } catch (e2) {
+      }
     }
   }
   async function loadVocab(teamCode) {
@@ -1657,6 +1701,7 @@ Outcome: Eliminated`;
         standing: "Active",
         // reset tournament state
         ratings: {},
+        raterScores: [],
         feelNotes: ""
       })),
       snowTemps: [],
@@ -5295,7 +5340,7 @@ Outcome: Eliminated`;
       trailNotes: w.trailNotes ?? bestSessW.trailNotes
     };
     const cond = [["Air Temp (F)", effW.airTempF], ["Humidity %", effW.humidity], ["Wind mph", effW.windMph], ["Sky", effW.sky], ["Snow Type", effW.snowType], ["Snow Depth cm", effW.snowDepthCm], ["Grooming", effW.grooming], ["Course Notes", effW.trailNotes]];
-    const log = [["Session", "Test", "Tester(s)", "Category", "Type", "Ski ID", "Product", "Form", "Application", "Notes", "Kick", "Glide", "Composite", "Standing", "Feel Notes"]];
+    const log = [["Session", "Test", "Tester(s)", "Category", "Type", "Ski ID", "Product", "Form", "Application", "Notes", "Kick (avg)", "Glide (avg)", "Composite", "Standing", "Feel Notes"]];
     const kickRankings = [["Session", "Test", "Rank", "Delta vs Bracket", "Ski ID", "Product", "Application", "Bracket Wins", "Kick", "Glide", "Composite /20", "Combined Score"]];
     const bracket = [["Session", "Test", "Category", "Round", "Match", "Ski A", "Ski B", "Winner", "Loser", "Tie?", "Pair Label"]];
     const snow = [["Session", "Test", "Timestamp", "Type", "Temp F", "Temp C"]];
@@ -5308,7 +5353,14 @@ Outcome: Eliminated`;
         (test.skis || []).forEach((ski) => {
           const isG = test.category === "glide" || test.category === "glide-out";
           const comp = isG ? ski.ratings?.glide : ski.ratings?.kick != null && ski.ratings?.glide != null ? ski.ratings.kick + ski.ratings.glide : null;
-          log.push([sess.name, test.name || "", test.testers || "", test.category, test.type || "", ski.id, ski.product || "", ski.waxForm || "", ski.application || "", ski.notes || "", ski.ratings?.kick ?? null, ski.ratings?.glide ?? null, comp ?? null, ski.standing || "", ski.feelNotes || ""]);
+          const baseRow = [sess.name, test.name || "", test.testers || "", test.category, test.type || "", ski.id, ski.product || "", ski.waxForm || "", ski.application || "", ski.notes || "", ski.ratings?.kick ?? null, ski.ratings?.glide ?? null, comp ?? null, ski.standing || "", ski.feelNotes || ""];
+          if (test.raters?.length && ski.raterScores?.length) {
+            test.raters.forEach((rater) => {
+              const rs = (ski.raterScores || []).find((r) => r.rater === rater) || {};
+              baseRow.push(rs.kick ?? null, rs.glide ?? null);
+            });
+          }
+          log.push(baseRow);
         });
         if (test.category === "kick" && test.useRatingRankings && (test.skis || []).some((s) => s.standing === "Winner")) {
           const kr = computeKickRankings(test);
@@ -6546,50 +6598,126 @@ Outcome: Eliminated`;
         onClick: () => setOpen((o) => !o)
       },
       open ? "Hide" : "Rate"
-    ))), open && !isElim && !isTied && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 12px 12px", borderTop: "1px solid var(--rule)" } }, !isGlide && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", width: 64, flexShrink: 0 } }, "KICK 1\u201310"), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        type: "range",
-        min: 1,
-        max: 10,
-        value: ski.ratings?.kick ?? 5,
-        onChange: (e) => updateRating(ski.id, { ...ski.ratings || {}, kick: Number(e.target.value) }),
-        style: { flex: 1 }
+    ))), open && !isElim && !isTied && (() => {
+      const raters = test.raters || [];
+      const useMulti = !isGlide && raters.length > 0;
+      if (useMulti) {
+        let getRaterScore2 = function(rater) {
+          return scores.find((r) => r.rater === rater) || { rater, kick: null, glide: null };
+        }, setRaterField2 = function(rater, field, val) {
+          const updated = [...scores.filter((r) => r.rater !== rater), { ...getRaterScore2(rater), [field]: val }];
+          const derived = deriveRatings(updated);
+          updateRating(ski.id, derived, { raterScores: updated });
+        };
+        var getRaterScore = getRaterScore2, setRaterField = setRaterField2;
+        const scores = ski.raterScores || [];
+        const avgKick = ski.ratings?.kick ?? null;
+        const avgGlide = ski.ratings?.glide ?? null;
+        const avgComp = avgKick != null && avgGlide != null ? Math.round((avgKick + avgGlide) * 10) / 10 : null;
+        return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 12px 12px", borderTop: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, raters.map((rater) => {
+          const rs2 = getRaterScore2(rater);
+          return /* @__PURE__ */ React.createElement("div", { key: rater, style: {
+            marginBottom: 10,
+            paddingBottom: 10,
+            borderBottom: "1px solid var(--rule)"
+          } }, /* @__PURE__ */ React.createElement("div", { style: {
+            fontSize: 11,
+            fontWeight: 700,
+            color: "var(--ink-mid)",
+            marginBottom: 6,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em"
+          } }, rater), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 6 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", width: 52, flexShrink: 0 } }, "KICK 1\u201310"), /* @__PURE__ */ React.createElement(
+            "input",
+            {
+              type: "range",
+              min: 1,
+              max: 10,
+              value: rs2.kick ?? 5,
+              onChange: (e) => setRaterField2(rater, "kick", Number(e.target.value)),
+              style: { flex: 1 }
+            }
+          ), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+            fontSize: 16,
+            fontWeight: 700,
+            width: 28,
+            textAlign: "right",
+            color: rs2.kick != null ? compositeColor(rs2.kick, 10) : "var(--ink-faint)"
+          } }, rs2.kick ?? "-")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", width: 52, flexShrink: 0 } }, "GLIDE 1\u201310"), /* @__PURE__ */ React.createElement(
+            "input",
+            {
+              type: "range",
+              min: 1,
+              max: 10,
+              value: rs2.glide ?? 5,
+              onChange: (e) => setRaterField2(rater, "glide", Number(e.target.value)),
+              style: { flex: 1 }
+            }
+          ), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+            fontSize: 16,
+            fontWeight: 700,
+            width: 28,
+            textAlign: "right",
+            color: rs2.glide != null ? compositeColor(rs2.glide, 10) : "var(--ink-faint)"
+          } }, rs2.glide ?? "-")));
+        })), scores.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, fontSize: 11, marginBottom: 8 }, className: "mono" }, avgKick != null && /* @__PURE__ */ React.createElement("span", null, "Kick avg: ", /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: compositeColor(avgKick, 10) } }, avgKick, "/10")), avgGlide != null && /* @__PURE__ */ React.createElement("span", null, "Glide avg: ", /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: compositeColor(avgGlide, 10) } }, avgGlide, "/10")), avgComp != null && /* @__PURE__ */ React.createElement("span", null, "Composite: ", /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: compositeColor(avgComp, 20) } }, avgComp, "/20"))), /* @__PURE__ */ React.createElement(
+          TA,
+          {
+            label: "",
+            value: ski.feelNotes || "",
+            rows: 2,
+            mic: true,
+            placeholder: "Feel notes\u2026",
+            style: { marginBottom: 0 },
+            onChange: (v) => updateRating(ski.id, ski.ratings || {}, { feelNotes: v })
+          }
+        ));
       }
-    ), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
-      fontSize: 17,
-      fontWeight: 700,
-      width: 28,
-      textAlign: "right",
-      color: ski.ratings?.kick != null ? compositeColor(ski.ratings.kick, 10) : "var(--ink-faint)"
-    } }, ski.ratings?.kick ?? "-")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginTop: !isGlide ? 0 : 10, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", width: 64, flexShrink: 0 } }, "GLIDE 1\u201310"), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        type: "range",
-        min: 1,
-        max: 10,
-        value: ski.ratings?.glide ?? 5,
-        onChange: (e) => updateRating(ski.id, { ...ski.ratings || {}, glide: Number(e.target.value) }),
-        style: { flex: 1 }
-      }
-    ), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
-      fontSize: 17,
-      fontWeight: 700,
-      width: 28,
-      textAlign: "right",
-      color: ski.ratings?.glide != null ? compositeColor(ski.ratings.glide, 10) : "var(--ink-faint)"
-    } }, ski.ratings?.glide ?? "-")), comp != null && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 8 }, className: "mono" }, "Composite: ", /* @__PURE__ */ React.createElement("span", { style: { color: compositeColor(comp, max), fontWeight: 700 } }, comp, "/", max)), /* @__PURE__ */ React.createElement(
-      TA,
-      {
-        label: "",
-        value: ski.feelNotes || "",
-        rows: 2,
-        mic: true,
-        placeholder: "Feel notes\u2026",
-        style: { marginBottom: 0 },
-        onChange: (v) => updateRating(ski.id, ski.ratings || {}, { feelNotes: v })
-      }
-    )), rewaxId === ski.id && /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--rule)", padding: "12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--blue)", marginBottom: 10 } }, "Re-wax ", ski.id), /* @__PURE__ */ React.createElement(
+      return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 12px 12px", borderTop: "1px solid var(--rule)" } }, !isGlide && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", width: 64, flexShrink: 0 } }, "KICK 1\u201310"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          type: "range",
+          min: 1,
+          max: 10,
+          value: ski.ratings?.kick ?? 5,
+          onChange: (e) => updateRating(ski.id, { ...ski.ratings || {}, kick: Number(e.target.value) }),
+          style: { flex: 1 }
+        }
+      ), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+        fontSize: 17,
+        fontWeight: 700,
+        width: 28,
+        textAlign: "right",
+        color: ski.ratings?.kick != null ? compositeColor(ski.ratings.kick, 10) : "var(--ink-faint)"
+      } }, ski.ratings?.kick ?? "-")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginTop: !isGlide ? 0 : 10, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", width: 64, flexShrink: 0 } }, "GLIDE 1\u201310"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          type: "range",
+          min: 1,
+          max: 10,
+          value: ski.ratings?.glide ?? 5,
+          onChange: (e) => updateRating(ski.id, { ...ski.ratings || {}, glide: Number(e.target.value) }),
+          style: { flex: 1 }
+        }
+      ), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+        fontSize: 17,
+        fontWeight: 700,
+        width: 28,
+        textAlign: "right",
+        color: ski.ratings?.glide != null ? compositeColor(ski.ratings.glide, 10) : "var(--ink-faint)"
+      } }, ski.ratings?.glide ?? "-")), comp != null && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 8 }, className: "mono" }, "Composite: ", /* @__PURE__ */ React.createElement("span", { style: { color: compositeColor(comp, max), fontWeight: 700 } }, comp, "/", max)), /* @__PURE__ */ React.createElement(
+        TA,
+        {
+          label: "",
+          value: ski.feelNotes || "",
+          rows: 2,
+          mic: true,
+          placeholder: "Feel notes\u2026",
+          style: { marginBottom: 0 },
+          onChange: (v) => updateRating(ski.id, ski.ratings || {}, { feelNotes: v })
+        }
+      ));
+    })(), rewaxId === ski.id && /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--rule)", padding: "12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--blue)", marginBottom: 10 } }, "Re-wax ", ski.id), /* @__PURE__ */ React.createElement(
       ACI,
       {
         label: "New Product",
@@ -7158,11 +7286,17 @@ Outcome: Eliminated`;
           padding: "1px 5px",
           borderRadius: 3,
           letterSpacing: "0.06em"
-        } }, "WINNER")), !isBlind && e.ski.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, e.ski.application)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, e.composite != null ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: {
+        } }, "WINNER")), !isBlind && e.ski.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, e.ski.application)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } }, e.composite != null ? /* @__PURE__ */ React.createElement(React.Fragment, null, (e.ski.ratings?.kick != null || e.ski.ratings?.glide != null) && /* @__PURE__ */ React.createElement("div", { style: {
+          display: "flex",
+          gap: 6,
+          justifyContent: "flex-end",
+          marginBottom: 2,
+          fontSize: 11
+        }, className: "mono" }, e.ski.ratings?.kick != null && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, "K", /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: compositeColor(e.ski.ratings.kick, 10) } }, Number.isInteger(e.ski.ratings.kick) ? e.ski.ratings.kick : e.ski.ratings.kick.toFixed(1))), e.ski.ratings?.glide != null && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, "G", /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: compositeColor(e.ski.ratings.glide, 10) } }, Number.isInteger(e.ski.ratings.glide) ? e.ski.ratings.glide : e.ski.ratings.glide.toFixed(1)))), /* @__PURE__ */ React.createElement("div", { style: {
           fontSize: 13,
           fontWeight: 700,
           color: e.composite >= 16 ? "var(--green)" : e.composite >= 12 ? "var(--amber)" : "var(--ink-faint)"
-        } }, e.composite, "/20"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
+        } }, Number.isInteger(e.composite) ? e.composite : e.composite.toFixed(1), "/20"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
           fontSize: 9,
           color: "var(--ink-faint)",
           marginTop: 1
@@ -7649,10 +7783,67 @@ Outcome: Eliminated`;
         value: test.testers || "",
         onChange: (v) => upd({ testers: v }),
         placeholder: "Names or initials of skiers conducting this test",
-        style: { marginBottom: 12 },
+        style: { marginBottom: 8 },
         mic: true
       }
-    ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, test.deadline ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, new Date(test.deadline).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }), test.deadlineLabel ? ` \u2014 ${test.deadlineLabel}` : "")) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, "No deadline set")), /* @__PURE__ */ React.createElement(
+    ), test.category === "kick" && (() => {
+      const raters = test.raters || [];
+      const [newRater, setNewRater] = useState("");
+      return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Raters (optional)"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 6, lineHeight: 1.5 } }, "Add named raters to collect independent kick/glide scores per person. Ratings are averaged for rankings."), raters.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 } }, raters.map((r) => /* @__PURE__ */ React.createElement("div", { key: r, style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        background: "var(--paper-2)",
+        border: "1px solid var(--rule)",
+        borderRadius: 6,
+        padding: "4px 10px",
+        fontSize: 13
+      } }, /* @__PURE__ */ React.createElement("span", null, r), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => upd({ raters: raters.filter((x) => x !== r) }),
+          style: {
+            background: "none",
+            border: "none",
+            color: "var(--ink-faint)",
+            cursor: "pointer",
+            fontSize: 15,
+            lineHeight: 1,
+            padding: "0 0 0 4px"
+          }
+        },
+        "\xD7"
+      )))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          className: "inp",
+          value: newRater,
+          onChange: (e) => setNewRater(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Enter" && newRater.trim() && !raters.includes(newRater.trim())) {
+              upd({ raters: [...raters, newRater.trim()] });
+              setNewRater("");
+            }
+          },
+          placeholder: "Rater name\u2026",
+          style: { flex: 1, marginBottom: 0 }
+        }
+      ), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "btn-ghost",
+          style: { fontSize: 13, padding: "6px 12px", minHeight: 36, flexShrink: 0 },
+          onClick: () => {
+            const n = newRater.trim();
+            if (n && !raters.includes(n)) {
+              upd({ raters: [...raters, n] });
+              setNewRater("");
+            }
+          }
+        },
+        "Add"
+      )));
+    })(), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, test.deadline ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, new Date(test.deadline).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }), test.deadlineLabel ? ` \u2014 ${test.deadlineLabel}` : "")) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, "No deadline set")), /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: () => setShowDeadlinePicker(true),
@@ -9373,7 +9564,7 @@ Outcome: Eliminated`;
       const tombstones = lsGet(`waxlab:deleted:${teamCode}`) || [];
       if (tombstones.includes(event.id)) return;
       setEvents((p) => p.find((e) => e.id === event.id) ? p.map((e) => e.id === event.id ? event : e) : [...p, event]);
-      saveEvent(teamCode, event);
+      const writePromise = saveEvent(teamCode, event);
       setSyncStatus(db ? "saving" : "saved");
       pendingWrites.current.add(event.id);
       clearTimeout(persistTimers.current[event.id]);
@@ -9381,7 +9572,16 @@ Outcome: Eliminated`;
         pendingWrites.current.delete(event.id);
         setSyncStatus((s) => s === "saving" ? "saved" : s);
         setTimeout(() => setSyncStatus((s) => s === "saved" ? "idle" : s), 1500);
-      }, 4e3);
+      }, 2e3);
+      Promise.resolve(writePromise).then((confirmed) => {
+        if (confirmed) {
+          clearTimeout(persistTimers.current[event.id]);
+          delete persistTimers.current[event.id];
+          pendingWrites.current.delete(event.id);
+          setSyncStatus("saved");
+          setTimeout(() => setSyncStatus((s) => s === "saved" ? "idle" : s), 1500);
+        }
+      });
     }, [teamCode]);
     useEffect(() => {
       function flushAll() {
@@ -11057,7 +11257,66 @@ Outcome: Eliminated`;
       justifyContent: "space-between",
       alignItems: "flex-start",
       marginBottom: 4
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(PlatformPill, { plat: d.platform }), /* @__PURE__ */ React.createElement("span", { style: { ...mono, fontSize: 11, color: C.faint } }, d.id.slice(0, 16), "\u2026")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: C.faint, ...mono } }, d.pingCount, " ping", d.pingCount !== 1 ? "s" : "")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, "Teams: ", d.teams.map((tc) => /* @__PURE__ */ React.createElement("span", { key: tc, style: { fontWeight: 700, color: C.ink, marginLeft: 3 } }, tc)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: C.faint, marginTop: 3 } }, /* @__PURE__ */ React.createElement("span", null, "First: ", new Date(d.firstSeen).toLocaleDateString()), /* @__PURE__ */ React.createElement("span", null, "Last: ", new Date(d.lastSeen).toLocaleDateString()), /* @__PURE__ */ React.createElement("span", null, "Actions: ", d.eventTypes.join(", ")))))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, lineHeight: 1.6 } }, "Device IDs are anonymous random UUIDs stored in localStorage \u2014 no personally identifiable information is collected. Multiple users on the same physical device and browser share one device ID."))));
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(PlatformPill, { plat: d.platform }), /* @__PURE__ */ React.createElement("span", { style: { ...mono, fontSize: 11, color: C.faint } }, d.id.slice(0, 16), "\u2026")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: C.faint, ...mono } }, d.pingCount, " ping", d.pingCount !== 1 ? "s" : "")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, "Teams: ", d.teams.map((tc) => /* @__PURE__ */ React.createElement("span", { key: tc, style: { fontWeight: 700, color: C.ink, marginLeft: 3 } }, tc)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: C.faint, marginTop: 3 } }, /* @__PURE__ */ React.createElement("span", null, "First: ", new Date(d.firstSeen).toLocaleDateString()), /* @__PURE__ */ React.createElement("span", null, "Last: ", new Date(d.lastSeen).toLocaleDateString()), /* @__PURE__ */ React.createElement("span", null, "Actions: ", d.eventTypes.join(", ")))))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, lineHeight: 1.6 } }, "Device IDs are anonymous random UUIDs stored in localStorage \u2014 no personally identifiable information is collected. Multiple users on the same physical device and browser share one device ID."), (() => {
+      const lastErr = lsGet("waxlab:lastPingError");
+      const myId = getDeviceId();
+      const myPlat = getDevicePlatform();
+      const [pingMsg, setPingMsg] = React.useState(null);
+      async function testPing() {
+        setPingMsg("Sending\u2026");
+        try {
+          const { error: error2 } = await db.from(ANALYTICS_TABLE).insert({
+            device_id: myId,
+            team_code: "ADMIN",
+            event_type: "admin_test_ping",
+            platform: myPlat,
+            payload: {},
+            ts: (/* @__PURE__ */ new Date()).toISOString()
+          });
+          if (error2) setPingMsg("\u2717 Error: " + error2.message + " (code: " + error2.code + ")");
+          else {
+            setPingMsg("\u2713 Ping landed \u2014 refresh to see it");
+            loadData();
+          }
+        } catch (e) {
+          setPingMsg("\u2717 Exception: " + e.message);
+        }
+      }
+      return /* @__PURE__ */ React.createElement("div", { style: {
+        marginTop: 16,
+        padding: 14,
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 10
+      } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, marginBottom: 8 } }, "Admin Diagnostics"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.faint, fontFamily: "monospace", marginBottom: 6 } }, "This device: ", myId, /* @__PURE__ */ React.createElement("br", null), "Platform: ", myPlat), lastErr && /* @__PURE__ */ React.createElement("div", { style: {
+        fontSize: 11,
+        color: C.red,
+        fontFamily: "monospace",
+        background: `${C.red}12`,
+        padding: "6px 8px",
+        borderRadius: 6,
+        marginBottom: 8
+      } }, "Last ping error (", lastErr.ts?.slice(11, 19), "):", /* @__PURE__ */ React.createElement("br", null), lastErr.msg, lastErr.code ? ` [${lastErr.code}]` : "", lastErr.eventType ? ` on "${lastErr.eventType}"` : ""), !lastErr && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.green, marginBottom: 8 } }, "\u2713 No recent ping errors on this device"), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: testPing,
+          style: {
+            fontSize: 12,
+            padding: "6px 14px",
+            border: `1px solid ${C.border}`,
+            borderRadius: 6,
+            cursor: "pointer",
+            background: C.bg,
+            color: C.ink
+          }
+        },
+        "Send test ping now"
+      ), pingMsg && /* @__PURE__ */ React.createElement("div", { style: {
+        fontSize: 12,
+        marginTop: 8,
+        color: pingMsg.startsWith("\u2713") ? C.green : pingMsg.startsWith("\u2717") ? C.red : C.faint
+      } }, pingMsg), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.faint, marginTop: 10, lineHeight: 1.5 } }, "If the test ping succeeds but other devices aren't showing up, those devices joined before analytics was deployed and haven't fired a ping yet \u2014 they'll appear automatically on their next team join."));
+    })())));
   }
 })();
 
