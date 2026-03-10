@@ -6756,6 +6756,7 @@ Outcome: Eliminated`;
     const [pairActed, setPairActed] = useState(/* @__PURE__ */ new Set());
     const [pendingResult, setPendingResult] = useState(null);
     const [newId, setNewId] = useState("");
+    const [newRater, setNewRater] = useState("");
     const [newProduct, setNewProduct] = useState("");
     const [newApp, setNewApp] = useState("");
     const [newForm, setNewForm] = useState("");
@@ -7788,7 +7789,6 @@ Outcome: Eliminated`;
       }
     ), test.category === "kick" && (() => {
       const raters = test.raters || [];
-      const [newRater, setNewRater] = useState("");
       return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Raters (optional)"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 6, lineHeight: 1.5 } }, "Add named raters to collect independent kick/glide scores per person. Ratings are averaged for rankings."), raters.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 } }, raters.map((r) => /* @__PURE__ */ React.createElement("div", { key: r, style: {
         display: "flex",
         alignItems: "center",
