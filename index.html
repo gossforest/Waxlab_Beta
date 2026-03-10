@@ -104,6 +104,7 @@ var AppBundle = (() => {
         rounds: mergeRounds(ta.rounds, tb.rounds),
         snowTemps: unionById([...ta.snowTemps || []], [...tb.snowTemps || []], (t) => t.ts),
         airTemps: unionById([...ta.airTemps || []], [...tb.airTemps || []], (t) => t.ts),
+        glideOutRuns: unionById([...ta.glideOutRuns || []], [...tb.glideOutRuns || []], (r) => r.id),
         notes: ta.notes || tb.notes || ""
       };
     });
@@ -260,7 +261,7 @@ var AppBundle = (() => {
     try {
       const q = lsGet(WRITE_QUEUE_KEY) || [];
       const updated = q.filter((r) => r.eventId !== event.id);
-      updated.push({ teamCode, eventId: event.id, ts: Date.now() });
+      updated.push({ teamCode, eventId: event.id, ts: Date.now(), snapshot: event });
       lsSet(WRITE_QUEUE_KEY, updated);
     } catch (e) {
     }
@@ -279,9 +280,9 @@ var AppBundle = (() => {
     if (wq.length) {
       const freshW = wq.filter((r) => (r.ts || 0) > cutoff);
       if (freshW.length !== wq.length) lsSet(WRITE_QUEUE_KEY, freshW);
-      for (const { teamCode, eventId } of [...freshW]) {
+      for (const { teamCode, eventId, snapshot } of [...freshW]) {
         const evs = lsGet(`waxlab:events:${teamCode}`) || [];
-        const ev = evs.find((e) => e.id === eventId);
+        const ev = evs.find((e) => e.id === eventId) || snapshot || null;
         const deletedIds = lsGet(`waxlab:deleted:${teamCode}`) || [];
         if (!ev || deletedIds.includes(eventId)) {
           dequeueWrite(eventId);
@@ -335,6 +336,39 @@ var AppBundle = (() => {
       });
     }
     return true;
+  }
+  var ANALYTICS_TABLE = "waxlab_analytics";
+  var DEVICE_ID_KEY = "waxlab:device_id";
+  function getDeviceId() {
+    let id = lsGet(DEVICE_ID_KEY);
+    if (!id) {
+      id = "dev_" + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+      lsSet(DEVICE_ID_KEY, id);
+    }
+    return id;
+  }
+  function getDevicePlatform() {
+    const ua = navigator.userAgent || "";
+    if (/iPad|iPhone|iPod/.test(ua)) return "ios";
+    if (/Android/.test(ua)) return "android";
+    if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return "ios";
+    if (/Win/.test(ua)) return "windows";
+    if (/Mac/.test(ua)) return "mac";
+    return "other";
+  }
+  async function ping(teamCode, eventType, payload = {}) {
+    if (!db || !navigator.onLine) return;
+    try {
+      await db.from(ANALYTICS_TABLE).insert({
+        device_id: getDeviceId(),
+        team_code: teamCode,
+        event_type: eventType,
+        platform: getDevicePlatform(),
+        payload,
+        ts: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    } catch (e) {
+    }
   }
   async function loadVocab(teamCode) {
     const teamVocab = lsGet(`waxlab:vocab:${teamCode}`) || {};
@@ -584,16 +618,22 @@ var AppBundle = (() => {
     _blobCache[photo.id] = objUrl;
     return objUrl;
   }
-  function BackupRestore({ teamCode, events, onRestore }) {
+  function BackupRestore({ teamCode, events, onRestore, setVocab, setCatalog, setFleets }) {
     const [importing, setImporting] = useState(false);
     const [msg, setMsg] = useState(null);
     const fileRef = useRef(null);
     function doExport() {
+      const vocab = lsGet(`waxlab:vocab:${teamCode}`) || {};
+      const catalog = lsGet(`waxlab:catalog:${teamCode}`) || [];
+      const fleets = lsGet(`waxlab:fleets:${teamCode}`) || [];
       const payload = {
-        version: 1,
+        version: 2,
         teamCode,
         exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        events
+        events,
+        vocab,
+        catalog,
+        fleets
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -602,8 +642,8 @@ var AppBundle = (() => {
       a.download = `waxlab-backup-${teamCode}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      setMsg("\u2713 Backup downloaded");
-      setTimeout(() => setMsg(null), 3e3);
+      setMsg("\u2713 Backup downloaded \u2014 includes events, vocab, catalog & fleets");
+      setTimeout(() => setMsg(null), 4e3);
     }
     function doImport(e) {
       const file = e.target.files?.[0];
@@ -612,16 +652,54 @@ var AppBundle = (() => {
       const reader = new FileReader();
       reader.onload = (ev) => {
         try {
-          const payload = JSON.parse(ev.target.result);
+          const payload = JSON.parse(ev2.target.result);
           if (!Array.isArray(payload.events)) throw new Error("Invalid backup file");
           onRestore(payload.events);
-          setMsg(`\u2713 Restored ${payload.events.length} event${payload.events.length !== 1 ? "s" : ""}`);
+          if (payload.vocab && typeof payload.vocab === "object") {
+            const localVocab = lsGet(`waxlab:vocab:${teamCode}`) || {};
+            const mergedVocab = { ...localVocab };
+            Object.entries(payload.vocab).forEach(([cat, terms]) => {
+              if (Array.isArray(terms)) {
+                mergedVocab[cat] = [.../* @__PURE__ */ new Set([...mergedVocab[cat] || [], ...terms])].sort();
+              }
+            });
+            lsSet(`waxlab:vocab:${teamCode}`, mergedVocab);
+            setVocab?.(mergedVocab);
+          }
+          if (Array.isArray(payload.catalog) && payload.catalog.length) {
+            const localCat = lsGet(`waxlab:catalog:${teamCode}`) || [];
+            const catMap = Object.fromEntries(localCat.map((e2) => [e2.product?.toLowerCase(), e2]));
+            payload.catalog.forEach((e2) => {
+              if (e2.product) catMap[e2.product.toLowerCase()] = e2;
+            });
+            const mergedCat = Object.values(catMap);
+            lsSet(`waxlab:catalog:${teamCode}`, mergedCat);
+            setCatalog?.(mergedCat);
+          }
+          if (Array.isArray(payload.fleets) && payload.fleets.length) {
+            const localFleets = lsGet(`waxlab:fleets:${teamCode}`) || [];
+            const fleetMap = Object.fromEntries(localFleets.map((f) => [f.id, f]));
+            payload.fleets.forEach((f) => {
+              if (f.id) fleetMap[f.id] = f;
+            });
+            const mergedFleets = Object.values(fleetMap);
+            lsSet(`waxlab:fleets:${teamCode}`, mergedFleets);
+            setFleets?.(mergedFleets);
+          }
+          const ev2 = payload.events.length;
+          const extras = [
+            payload.vocab && Object.keys(payload.vocab).length ? "vocab" : null,
+            payload.catalog?.length ? "catalog" : null,
+            payload.fleets?.length ? "fleets" : null
+          ].filter(Boolean);
+          const extraStr = extras.length ? ` + ${extras.join(", ")}` : "";
+          setMsg(`\u2713 Restored ${ev2} event${ev2 !== 1 ? "s" : ""}${extraStr}`);
         } catch (err) {
           setMsg(`\u2717 ${err.message}`);
         }
         setImporting(false);
         e.target.value = "";
-        setTimeout(() => setMsg(null), 4e3);
+        setTimeout(() => setMsg(null), 5e3);
       };
       reader.readAsText(file);
     }
@@ -639,7 +717,7 @@ var AppBundle = (() => {
       setMsg("\u2713 Tombstones cleared \u2014 reload to re-sync events from Supabase");
       setTimeout(() => setMsg(null), 6e3);
     }
-    return /* @__PURE__ */ React.createElement("div", { style: { marginTop: 24, borderTop: "1.5px solid var(--rule)", paddingTop: 20 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Backup & Restore"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 12, lineHeight: 1.5 } }, "Download all ", teamCode, " event data as a JSON file, or restore from a previous backup. Restore merges \u2014 it will not delete existing events."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { style: { marginTop: 24, borderTop: "1.5px solid var(--rule)", paddingTop: 20 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Backup & Restore"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 12, lineHeight: 1.5 } }, "Download a complete backup of all ", teamCode, " data \u2014 events, product vocab, catalog, and fleet registry. Restoring merges with current data: events are session-unioned, vocab/catalog/fleets are additive. Existing events are never deleted; restored events with newer timestamps take precedence on scalar fields."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn-ghost",
@@ -2208,10 +2286,14 @@ Outcome: Eliminated`;
   }
   function useOnlineStatus(onReconnect) {
     const [online, setOnline] = useState(navigator.onLine);
+    const cbRef = useRef(onReconnect);
+    useEffect(() => {
+      cbRef.current = onReconnect;
+    });
     useEffect(() => {
       const on = () => {
         setOnline(true);
-        onReconnect?.();
+        cbRef.current?.();
       };
       const off = () => setOnline(false);
       window.addEventListener("online", on);
@@ -5345,6 +5427,7 @@ Outcome: Eliminated`;
   }
   function ExportPanel({ event }) {
     function doXLSX() {
+      ping(getHashTeam(), "excel_export");
       const { info, cond, log, snow, bracket, kickRankings } = buildSheets(event);
       const wb = window.XLSX.utils.book_new();
       const sheets = [["Event Info", info], ["Conditions", cond], ["Test Log", log], ["Bracket History", bracket], ["Temperatures", snow]];
@@ -7609,6 +7692,7 @@ Outcome: Eliminated`;
           },
           disabled: alreadyLoaded,
           onClick: () => {
+            ping(getHashTeam(), "fleet_loaded", { fleetName: fleet.name, skiCount: fleet.skis.length });
             const existing = new Set((test.skis || []).map((s) => s.id));
             const toAdd = fleet.skis.filter((fs) => !existing.has(fs.id)).map((fs) => ({
               id: fs.id,
@@ -8127,6 +8211,7 @@ Outcome: Eliminated`;
       const name = newTestName.trim() || (cat === "glide" ? "Glide Test" : cat === "glide-out" ? "Glide Out Test" : "Kick Test");
       const t = { id: uid(), name, category: cat, type: type || "", skis: [], snowTemps: [], airTemps: [], notes: "", createdAt: nowStr() };
       upd({ tests: [...session.tests || [], t] });
+      ping(teamCode, "test_created", { category: cat, type: type || "" });
       setCreatingTest(false);
       setNewTestName("");
       setNewTestCategory("glide");
@@ -8846,7 +8931,7 @@ Outcome: Eliminated`;
       "Undo"
     ));
   }
-  function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore, onProducts, syncStatus, online }) {
+  function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore, onProducts, syncStatus, online, setVocab, setCatalog, setFleets }) {
     const sorted = [...events].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     const [showNewModal, setShowNewModal] = useState(false);
     const [pendingDelete, setPendingDelete] = useState(null);
@@ -8919,7 +9004,17 @@ Outcome: Eliminated`;
           borderTop: "1px solid var(--rule)"
         } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)" } }, testCount, " test", testCount !== 1 ? "s" : ""), winCount > 0 && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--green)", fontWeight: 600 } }, winCount, " winner", winCount !== 1 ? "s" : ""))
       ));
-    }), /* @__PURE__ */ React.createElement(BackupRestore, { teamCode, events, onRestore })), pendingDelete && /* @__PURE__ */ React.createElement(DeleteToast, { label: pendingDelete.name, onUndo: undoDelete, onCommit: commitDelete }), showNewModal && /* @__PURE__ */ React.createElement("div", { className: "snow-modal-backdrop", onClick: (e) => {
+    }), /* @__PURE__ */ React.createElement(
+      BackupRestore,
+      {
+        teamCode,
+        events,
+        onRestore,
+        setVocab,
+        setCatalog,
+        setFleets
+      }
+    )), pendingDelete && /* @__PURE__ */ React.createElement(DeleteToast, { label: pendingDelete.name, onUndo: undoDelete, onCommit: commitDelete }), showNewModal && /* @__PURE__ */ React.createElement("div", { className: "snow-modal-backdrop", onClick: (e) => {
       if (e.target === e.currentTarget) setShowNewModal(false);
     } }, /* @__PURE__ */ React.createElement("div", { className: "snow-modal" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 17, fontWeight: 700 } }, "New Event"), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowNewModal(false), className: "btn-text", style: { fontSize: 22 } }, "\xD7")), lastEvent ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginBottom: 16, lineHeight: 1.6 } }, "Copy the session and fleet setup from your last event, or start blank. Test results will not be copied."), /* @__PURE__ */ React.createElement(
       "button",
@@ -9202,6 +9297,12 @@ Outcome: Eliminated`;
       unsubscribeRef.current = unsub;
     }
     async function joinTeam(code) {
+      if (code === "ADMIN") {
+        setTeamCode("ADMIN");
+        setView("admin");
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setTeamCode(code);
       setView("home");
@@ -9221,6 +9322,7 @@ Outcome: Eliminated`;
         lsSet(`waxlab:seen:${code}`, true);
       }
       setLoading(false);
+      ping(code, "team_join", { platform: getDevicePlatform() });
       bgSyncEvents(code, (evs2) => {
         setEvents(evs2);
         setAllEventsGlobal(evs2);
@@ -9336,6 +9438,7 @@ Outcome: Eliminated`;
         createdAt: nowStr()
       };
       await persist(ev);
+      ping(teamCode, "event_created", { copyFrom: !!opts.copyFrom });
       setActiveSessionId(null);
       setActiveTestId(null);
       setActiveId(ev.id);
@@ -9356,6 +9459,7 @@ Outcome: Eliminated`;
       }
       const stored = lsGet(`waxlab:events:${teamCode}`) || [];
       lsSet(`waxlab:events:${teamCode}`, stored.filter((e) => e.id !== id));
+      ping(teamCode, "event_deleted");
       setView("home");
       setActiveId(null);
       setEvents((prev) => prev.filter((e) => e.id !== id));
@@ -9368,9 +9472,25 @@ Outcome: Eliminated`;
       }
     }
     function doRestore(importedEvents) {
+      const tombstones = lsGet(`waxlab:deleted:${teamCode}`) || [];
+      const incomingIds = new Set(importedEvents.map((e) => e.id));
+      const newTombstones = tombstones.filter((id) => !incomingIds.has(id));
+      if (newTombstones.length !== tombstones.length) {
+        lsSet(`waxlab:deleted:${teamCode}`, newTombstones);
+      }
       setEvents((prev) => {
-        const ids = new Set(prev.map((e) => e.id));
-        const merged = [...prev, ...importedEvents.filter((e) => !ids.has(e.id))];
+        const prevMap = Object.fromEntries(prev.map((e) => [e.id, e]));
+        importedEvents.forEach((incoming) => {
+          const existing = prevMap[incoming.id];
+          if (!existing) {
+            prevMap[incoming.id] = migrateEvent(incoming);
+          } else {
+            const incomingTs = incoming._savedAt || "";
+            const localTs = existing._savedAt || "";
+            prevMap[incoming.id] = incomingTs >= localTs ? mergeEventSessions(existing, migrateEvent(incoming)) : mergeEventSessions(migrateEvent(incoming), existing);
+          }
+        });
+        const merged = Object.values(prevMap);
         merged.forEach((ev) => saveEvent(teamCode, ev));
         return merged;
       });
@@ -9393,6 +9513,8 @@ Outcome: Eliminated`;
       await addVocabTerms(teamCode, category, cleaned);
     }, [teamCode]);
     if (!teamCode) return /* @__PURE__ */ React.createElement(TeamSelector, { onJoin: joinTeam });
+    if (teamCode === "ADMIN" && view === "admin")
+      return /* @__PURE__ */ React.createElement(AdminDashboard, { onLeave: leaveTeam, darkMode, onToggleDark: () => setDarkMode((d) => !d) });
     if (loading) return /* @__PURE__ */ React.createElement("div", { style: {
       display: "flex",
       alignItems: "center",
@@ -9498,6 +9620,9 @@ Outcome: Eliminated`;
         teamCode,
         onRestore: doRestore,
         onProducts: () => setView("library"),
+        setVocab,
+        setCatalog,
+        setFleets,
         syncStatus,
         online
       }
@@ -10202,6 +10327,7 @@ Outcome: Eliminated`;
         schedule: updatedSchedule,
         sessions: [...event.sessions || [], ...newSessions]
       });
+      ping(getHashTeam(), "schedule_activated", { windowCount: unactivated.length });
       setShowActivate(false);
     }
     const unactivatedCount = schedule.filter((w) => !w.activated).length;
@@ -10469,6 +10595,486 @@ Outcome: Eliminated`;
       padding: "12px 0",
       marginTop: 4
     } }, "All windows activated. Add new windows above to create additional sessions."));
+  }
+  function AdminDashboard({ onLeave, darkMode, onToggleDark }) {
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [data, setData] = useState(null);
+    const [tab, setTab] = useState("overview");
+    const [range, setRange] = useState(30);
+    useEffect(() => {
+      loadData();
+    }, [range]);
+    async function loadData() {
+      if (!db) {
+        setError("Supabase not configured \u2014 analytics unavailable in local-only mode.");
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const since = new Date(Date.now() - range * 24 * 60 * 60 * 1e3).toISOString();
+        const [analyticsRes, eventsRes] = await Promise.all([
+          db.from("waxlab_analytics").select("*").gte("ts", since).order("ts", { ascending: false }),
+          db.from("waxlab_events").select("team_code, data, updated_at")
+        ]);
+        if (analyticsRes.error) throw analyticsRes.error;
+        const pings = analyticsRes.data || [];
+        const allEvs = (eventsRes.data || []).map((r) => ({ ...r.data, team_code: r.team_code, _updatedAt: r.updated_at }));
+        const allTeams = [...new Set(allEvs.map((e) => e.team_code).filter(Boolean))];
+        const activeTeams = [...new Set(pings.map((p) => p.team_code).filter(Boolean))];
+        const devicesByTeam = {};
+        const platformByTeam = {};
+        pings.forEach((p) => {
+          if (!p.team_code || !p.device_id) return;
+          if (!devicesByTeam[p.team_code]) devicesByTeam[p.team_code] = /* @__PURE__ */ new Set();
+          devicesByTeam[p.team_code].add(p.device_id);
+          if (!platformByTeam[p.team_code]) platformByTeam[p.team_code] = {};
+          const plat = p.platform || "unknown";
+          platformByTeam[p.team_code][plat] = (platformByTeam[p.team_code][plat] || 0) + 1;
+        });
+        const eventsByTeam = {};
+        allEvs.forEach((e) => {
+          if (!e.team_code) return;
+          eventsByTeam[e.team_code] = (eventsByTeam[e.team_code] || 0) + 1;
+        });
+        const testCats = { glide: 0, kick: 0, "glide-out": 0 };
+        let totalTests = 0;
+        allEvs.forEach((ev) => {
+          (ev.sessions || []).forEach((sess) => {
+            (sess.tests || []).forEach((t) => {
+              totalTests++;
+              const cat = t.category || "glide";
+              testCats[cat] = (testCats[cat] || 0) + 1;
+            });
+          });
+        });
+        const featureCounts = {};
+        pings.forEach((p) => {
+          featureCounts[p.event_type] = (featureCounts[p.event_type] || 0) + 1;
+        });
+        const joinsByDay = {};
+        pings.filter((p) => p.event_type === "team_join").forEach((p) => {
+          const day = p.ts.slice(0, 10);
+          if (!joinsByDay[day]) joinsByDay[day] = /* @__PURE__ */ new Set();
+          joinsByDay[day].add(p.team_code);
+        });
+        const joinTimeline = Object.entries(joinsByDay).sort(([a], [b]) => a.localeCompare(b)).map(([day, teams]) => ({ day, count: teams.size }));
+        const teamRows = allTeams.map((tc) => ({
+          code: tc,
+          events: eventsByTeam[tc] || 0,
+          devices: devicesByTeam[tc]?.size || 0,
+          platforms: platformByTeam[tc] || {},
+          active: activeTeams.includes(tc),
+          lastSeen: pings.filter((p) => p.team_code === tc).sort((a, b) => b.ts.localeCompare(a.ts))[0]?.ts || null,
+          joins: pings.filter((p) => p.team_code === tc && p.event_type === "team_join").length
+        })).sort((a, b) => b.events - a.events);
+        const platformTotals = {};
+        pings.forEach((p) => {
+          const plat = p.platform || "unknown";
+          platformTotals[plat] = (platformTotals[plat] || 0) + 1;
+        });
+        setData({
+          pings,
+          allTeams,
+          activeTeams,
+          teamRows,
+          devicesByTeam,
+          testCats,
+          totalTests,
+          featureCounts,
+          joinTimeline,
+          platformTotals,
+          totalEvents: allEvs.length
+        });
+      } catch (e) {
+        setError(e.message);
+      }
+      setLoading(false);
+    }
+    const C = {
+      // color palette
+      bg: darkMode ? "#0a0a0f" : "#f0f0f5",
+      card: darkMode ? "#141420" : "#ffffff",
+      border: darkMode ? "#2a2a3a" : "#e0e0ea",
+      ink: darkMode ? "#e8e8f0" : "#1a1a2e",
+      faint: darkMode ? "#5a5a7a" : "#9090aa",
+      accent: "#5b5bff",
+      green: "#34c759",
+      amber: "#ff9f0a",
+      red: "#ff3b30",
+      blue: "#007aff"
+    };
+    const TABS = [
+      { id: "overview", label: "Overview" },
+      { id: "teams", label: "Teams" },
+      { id: "usage", label: "Usage" },
+      { id: "devices", label: "Devices" }
+    ];
+    function Stat({ label, value, sub, color }) {
+      return /* @__PURE__ */ React.createElement("div", { style: {
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 12,
+        padding: "16px 18px",
+        flex: 1,
+        minWidth: 120
+      } }, /* @__PURE__ */ React.createElement("div", { style: {
+        fontSize: 11,
+        fontWeight: 700,
+        color: C.faint,
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        marginBottom: 6
+      } }, label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, fontWeight: 800, color: color || C.ink, lineHeight: 1 } }, value), sub && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.faint, marginTop: 4 } }, sub));
+    }
+    function MiniBar({ label, value, max, color }) {
+      const pct = max > 0 ? Math.round(value / max * 100) : 0;
+      return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 3 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.ink } }, label), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: C.ink, fontFamily: "monospace" } }, value)), /* @__PURE__ */ React.createElement("div", { style: { height: 6, background: C.border, borderRadius: 3, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: {
+        height: "100%",
+        width: `${pct}%`,
+        background: color || C.accent,
+        borderRadius: 3,
+        transition: "width 0.4s ease"
+      } })));
+    }
+    function PlatformPill({ plat }) {
+      const colors = { ios: C.blue, android: C.green, mac: C.faint, windows: C.amber, other: C.faint };
+      const icons = { ios: "\u{1F34E}", android: "\u{1F916}", mac: "\u{1F4BB}", windows: "\u{1FA9F}", other: "?" };
+      return /* @__PURE__ */ React.createElement("span", { style: {
+        fontSize: 10,
+        padding: "2px 6px",
+        borderRadius: 4,
+        fontWeight: 700,
+        background: `${colors[plat] || C.faint}22`,
+        color: colors[plat] || C.faint,
+        marginRight: 3
+      } }, icons[plat] || "?", " ", plat);
+    }
+    function Sparkline({ data: points }) {
+      if (!points?.length) return null;
+      const vals = points.map((p) => p.count);
+      const max = Math.max(...vals, 1);
+      const W = 120, H = 30, pad = 2;
+      const xs = points.map((_, i) => pad + i / Math.max(points.length - 1, 1) * (W - pad * 2));
+      const ys = vals.map((v) => H - pad - v / max * (H - pad * 2));
+      const d = xs.map((x, i) => `${i === 0 ? "M" : "L"} ${x} ${ys[i]}`).join(" ");
+      return /* @__PURE__ */ React.createElement("svg", { width: W, height: H, style: { display: "block" } }, /* @__PURE__ */ React.createElement("path", { d, fill: "none", stroke: C.accent, strokeWidth: 1.5 }), xs.map((x, i) => /* @__PURE__ */ React.createElement("circle", { key: i, cx: x, cy: ys[i], r: 2, fill: C.accent })));
+    }
+    const style = {
+      outer: {
+        minHeight: "100vh",
+        background: C.bg,
+        color: C.ink,
+        fontFamily: "-apple-system, 'Helvetica Neue', sans-serif"
+      },
+      header: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "16px 20px",
+        borderBottom: `1px solid ${C.border}`,
+        background: C.card,
+        position: "sticky",
+        top: 0,
+        zIndex: 10
+      },
+      content: { padding: "20px 20px 40px", maxWidth: 900, margin: "0 auto" }
+    };
+    return /* @__PURE__ */ React.createElement("div", { style: style.outer }, /* @__PURE__ */ React.createElement("div", { style: style.header }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 11,
+      fontWeight: 700,
+      letterSpacing: "0.12em",
+      textTransform: "uppercase",
+      color: C.faint
+    } }, "WaxLab"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 800 } }, "Admin Dashboard")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, [7, 30, 90].map((d) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: d,
+        onClick: () => setRange(d),
+        style: {
+          fontSize: 11,
+          padding: "5px 10px",
+          border: `1px solid ${C.border}`,
+          borderRadius: 6,
+          cursor: "pointer",
+          fontWeight: range === d ? 700 : 400,
+          background: range === d ? C.accent : C.card,
+          color: range === d ? "#fff" : C.faint
+        }
+      },
+      d,
+      "d"
+    ))), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: loadData,
+        style: {
+          fontSize: 11,
+          padding: "5px 10px",
+          border: `1px solid ${C.border}`,
+          borderRadius: 6,
+          cursor: "pointer",
+          background: C.card,
+          color: C.faint
+        }
+      },
+      "\u21BB Refresh"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: onToggleDark,
+        style: {
+          fontSize: 11,
+          padding: "5px 10px",
+          border: `1px solid ${C.border}`,
+          borderRadius: 6,
+          cursor: "pointer",
+          background: C.card,
+          color: C.faint
+        }
+      },
+      darkMode ? "\u2600\uFE0F" : "\u{1F319}"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: onLeave,
+        style: {
+          fontSize: 11,
+          padding: "5px 10px",
+          border: `1px solid ${C.border}`,
+          borderRadius: 6,
+          cursor: "pointer",
+          background: C.card,
+          color: C.red
+        }
+      },
+      "\u2190 Exit"
+    ))), /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      borderBottom: `1px solid ${C.border}`,
+      background: C.card,
+      padding: "0 20px",
+      gap: 2
+    } }, TABS.map((t) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: t.id,
+        onClick: () => setTab(t.id),
+        style: {
+          fontSize: 13,
+          padding: "10px 16px",
+          border: "none",
+          cursor: "pointer",
+          fontWeight: tab === t.id ? 700 : 400,
+          background: "transparent",
+          color: tab === t.id ? C.accent : C.faint,
+          borderBottom: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent"
+        }
+      },
+      t.label
+    ))), /* @__PURE__ */ React.createElement("div", { style: style.content }, loading && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 60, color: C.faint, fontSize: 14 } }, "Loading analytics\u2026"), error && /* @__PURE__ */ React.createElement("div", { style: {
+      padding: 20,
+      background: `${C.red}18`,
+      border: `1px solid ${C.red}`,
+      borderRadius: 10,
+      color: C.red,
+      fontSize: 13
+    } }, error), data && tab === "overview" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Stat, { label: "Total Teams", value: data.allTeams.length, color: C.accent }), /* @__PURE__ */ React.createElement(
+      Stat,
+      {
+        label: `Active (${range}d)`,
+        value: data.activeTeams.length,
+        sub: "teams with at least one ping",
+        color: C.green
+      }
+    ), /* @__PURE__ */ React.createElement(Stat, { label: "Total Events", value: data.totalEvents, color: C.blue }), /* @__PURE__ */ React.createElement(
+      Stat,
+      {
+        label: "Total Tests",
+        value: data.totalTests,
+        sub: `across all events`,
+        color: C.amber
+      }
+    )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 } }, /* @__PURE__ */ React.createElement(
+      Stat,
+      {
+        label: `Pings (${range}d)`,
+        value: data.pings.length,
+        sub: "analytics events fired",
+        color: C.faint
+      }
+    ), /* @__PURE__ */ React.createElement(
+      Stat,
+      {
+        label: "New Events",
+        value: data.featureCounts["event_created"] || 0,
+        sub: `last ${range} days`
+      }
+    ), /* @__PURE__ */ React.createElement(
+      Stat,
+      {
+        label: "Tests Created",
+        value: data.featureCounts["test_created"] || 0,
+        sub: `last ${range} days`
+      }
+    ), /* @__PURE__ */ React.createElement(
+      Stat,
+      {
+        label: "Exports",
+        value: data.featureCounts["excel_export"] || 0,
+        sub: `last ${range} days`
+      }
+    )), data.joinTimeline.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      padding: 18,
+      marginBottom: 16
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 14
+    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700 } }, "Daily Active Teams \u2014 last ", range, " days"), /* @__PURE__ */ React.createElement(Sparkline, { data: data.joinTimeline })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2, alignItems: "flex-end", height: 40 } }, data.joinTimeline.map((d, i) => {
+      const max = Math.max(...data.joinTimeline.map((x) => x.count), 1);
+      const h = Math.max(4, Math.round(d.count / max * 36));
+      return /* @__PURE__ */ React.createElement(
+        "div",
+        {
+          key: i,
+          title: `${d.day}: ${d.count} team${d.count !== 1 ? "s" : ""}`,
+          style: {
+            flex: 1,
+            height: h,
+            background: C.accent,
+            borderRadius: "2px 2px 0 0",
+            opacity: 0.8,
+            cursor: "default",
+            minWidth: 3
+          }
+        }
+      );
+    })), /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      justifyContent: "space-between",
+      marginTop: 4,
+      fontSize: 9,
+      color: C.faint
+    } }, /* @__PURE__ */ React.createElement("span", null, data.joinTimeline[0]?.day), /* @__PURE__ */ React.createElement("span", null, data.joinTimeline[data.joinTimeline.length - 1]?.day))), /* @__PURE__ */ React.createElement("div", { style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      padding: 18
+    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "Test Type Distribution (all time)"), Object.entries(data.testCats).map(([cat, n]) => /* @__PURE__ */ React.createElement(
+      MiniBar,
+      {
+        key: cat,
+        label: cat === "glide-out" ? "Glide Out" : cat.charAt(0).toUpperCase() + cat.slice(1),
+        value: n,
+        max: data.totalTests,
+        color: cat === "glide" ? C.blue : cat === "kick" ? C.green : C.amber
+      }
+    )), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.faint, marginTop: 8 } }, "Total: ", data.totalTests, " tests across ", data.totalEvents, " events"))), data && tab === "teams" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.faint, marginBottom: 14 } }, data.allTeams.length, " teams total \xB7 ", data.activeTeams.length, " active in last ", range, " days"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, data.teamRows.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.code, style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 10,
+      padding: "12px 16px",
+      borderLeft: `3px solid ${t.active ? C.green : C.border}`
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 6
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("span", { style: {
+      fontFamily: "monospace",
+      fontSize: 15,
+      fontWeight: 800,
+      color: C.ink
+    } }, t.code), t.active && /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      padding: "2px 6px",
+      borderRadius: 4,
+      background: `${C.green}22`,
+      color: C.green,
+      letterSpacing: "0.06em"
+    } }, "ACTIVE")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16, fontSize: 12 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.ink } }, t.events), " events"), /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.ink } }, t.devices), " devices"), /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.ink } }, t.joins), " joins"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4 } }, Object.keys(t.platforms).map((plat) => /* @__PURE__ */ React.createElement(PlatformPill, { key: plat, plat })), t.lastSeen && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.faint, marginLeft: 4 } }, "last seen ", new Date(t.lastSeen).toLocaleDateString())))))), data && tab === "usage" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      padding: 18,
+      marginBottom: 16
+    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "Feature Usage \u2014 last ", range, " days"), [
+      { key: "team_join", label: "Team joins", color: C.accent },
+      { key: "event_created", label: "Events created", color: C.blue },
+      { key: "test_created", label: "Tests created", color: C.blue },
+      { key: "event_deleted", label: "Events deleted", color: C.red },
+      { key: "schedule_activated", label: "Schedules activated", color: C.green },
+      { key: "fleet_loaded", label: "Fleet presets applied", color: C.green },
+      { key: "excel_export", label: "Excel exports", color: C.amber }
+    ].map(({ key, label, color }) => {
+      const v = data.featureCounts[key] || 0;
+      const maxVal = Math.max(...Object.values(data.featureCounts), 1);
+      return /* @__PURE__ */ React.createElement(MiniBar, { key, label, value: v, max: maxVal, color });
+    })), data.featureCounts["test_created"] > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      padding: 18
+    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "Tests Created by Type \u2014 last ", range, " days"), ["glide", "kick", "glide-out"].map((cat) => {
+      const catPings = data.pings.filter((p) => p.event_type === "test_created" && p.payload?.category === cat);
+      const maxCat = Math.max(...["glide", "kick", "glide-out"].map((c) => data.pings.filter((p) => p.event_type === "test_created" && p.payload?.category === c).length), 1);
+      return /* @__PURE__ */ React.createElement(
+        MiniBar,
+        {
+          key: cat,
+          label: cat === "glide-out" ? "Glide Out" : cat.charAt(0).toUpperCase() + cat.slice(1),
+          value: catPings.length,
+          max: maxCat,
+          color: cat === "glide" ? C.blue : cat === "kick" ? C.green : C.amber
+        }
+      );
+    }))), data && tab === "devices" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 } }, Object.entries(data.platformTotals).sort((a, b) => b[1] - a[1]).map(([plat, count]) => /* @__PURE__ */ React.createElement(Stat, { key: plat, label: plat, value: count, sub: "total pings" }))), /* @__PURE__ */ React.createElement("div", { style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      padding: 18,
+      marginBottom: 16
+    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "Devices per Team"), data.teamRows.filter((t) => t.devices > 0).map((t) => /* @__PURE__ */ React.createElement("div", { key: t.code, style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 10
+    } }, /* @__PURE__ */ React.createElement("span", { style: {
+      fontFamily: "monospace",
+      fontSize: 12,
+      fontWeight: 700,
+      width: 100,
+      flexShrink: 0,
+      color: C.ink
+    } }, t.code), /* @__PURE__ */ React.createElement("div", { style: {
+      flex: 1,
+      height: 8,
+      background: C.border,
+      borderRadius: 4,
+      overflow: "hidden"
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      height: "100%",
+      width: `${Math.min(
+        100,
+        t.devices / Math.max(...data.teamRows.map((r) => r.devices), 1) * 100
+      )}%`,
+      background: C.accent,
+      borderRadius: 4
+    } })), /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 12,
+      fontWeight: 700,
+      fontFamily: "monospace",
+      width: 24,
+      textAlign: "right",
+      color: C.ink
+    } }, t.devices), /* @__PURE__ */ React.createElement("div", { style: { width: 120 } }, Object.keys(t.platforms).map((p) => /* @__PURE__ */ React.createElement(PlatformPill, { key: p, plat: p })))))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, lineHeight: 1.6 } }, "Device IDs are anonymous random UUIDs stored in localStorage. No personally identifiable information is collected. Multiple users on the same device share one device ID."))));
   }
 })();
 
