@@ -10620,9 +10620,35 @@ Outcome: Eliminated`;
         ]);
         if (analyticsRes.error) throw analyticsRes.error;
         const pings = analyticsRes.data || [];
-        const allEvs = (eventsRes.data || []).map((r) => ({ ...r.data, team_code: r.team_code, _updatedAt: r.updated_at }));
+        const allEvs = (eventsRes.data || []).map((r) => ({
+          ...r.data,
+          team_code: r.team_code,
+          _updatedAt: r.updated_at
+        }));
         const allTeams = [...new Set(allEvs.map((e) => e.team_code).filter(Boolean))];
         const activeTeams = [...new Set(pings.map((p) => p.team_code).filter(Boolean))];
+        const deviceMap = {};
+        pings.forEach((p) => {
+          if (!p.device_id) return;
+          if (!deviceMap[p.device_id]) {
+            deviceMap[p.device_id] = {
+              id: p.device_id,
+              teams: /* @__PURE__ */ new Set(),
+              platform: p.platform || "unknown",
+              firstSeen: p.ts,
+              lastSeen: p.ts,
+              pingCount: 0,
+              eventTypes: /* @__PURE__ */ new Set()
+            };
+          }
+          const d = deviceMap[p.device_id];
+          if (p.team_code) d.teams.add(p.team_code);
+          if (p.ts < d.firstSeen) d.firstSeen = p.ts;
+          if (p.ts > d.lastSeen) d.lastSeen = p.ts;
+          d.pingCount++;
+          d.eventTypes.add(p.event_type);
+        });
+        const deviceRows = Object.values(deviceMap).sort((a, b) => b.lastSeen.localeCompare(a.lastSeen)).map((d) => ({ ...d, teams: [...d.teams], eventTypes: [...d.eventTypes] }));
         const devicesByTeam = {};
         const platformByTeam = {};
         pings.forEach((p) => {
@@ -10669,6 +10695,23 @@ Outcome: Eliminated`;
           lastSeen: pings.filter((p) => p.team_code === tc).sort((a, b) => b.ts.localeCompare(a.ts))[0]?.ts || null,
           joins: pings.filter((p) => p.team_code === tc && p.event_type === "team_join").length
         })).sort((a, b) => b.events - a.events);
+        const eventRows = allEvs.filter((ev) => ev.id).map((ev) => {
+          let totalTestsInEvent = 0;
+          (ev.sessions || []).forEach((s) => {
+            totalTestsInEvent += (s.tests || []).length;
+          });
+          return {
+            id: ev.id,
+            teamCode: ev.team_code,
+            name: ev.name || "Untitled",
+            raceName: ev.raceName || "",
+            location: ev.location || "",
+            date: ev.date || ev.createdAt?.slice(0, 10) || "",
+            sessions: (ev.sessions || []).length,
+            tests: totalTestsInEvent,
+            updatedAt: ev._updatedAt || ""
+          };
+        }).sort((a, b) => b.date.localeCompare(a.date));
         const platformTotals = {};
         pings.forEach((p) => {
           const plat = p.platform || "unknown";
@@ -10679,13 +10722,15 @@ Outcome: Eliminated`;
           allTeams,
           activeTeams,
           teamRows,
+          deviceRows,
           devicesByTeam,
           testCats,
           totalTests,
           featureCounts,
           joinTimeline,
           platformTotals,
-          totalEvents: allEvs.length
+          totalEvents: allEvs.length,
+          eventRows
         });
       } catch (e) {
         setError(e.message);
@@ -10693,7 +10738,6 @@ Outcome: Eliminated`;
       setLoading(false);
     }
     const C = {
-      // color palette
       bg: darkMode ? "#0a0a0f" : "#f0f0f5",
       card: darkMode ? "#141420" : "#ffffff",
       border: darkMode ? "#2a2a3a" : "#e0e0ea",
@@ -10708,6 +10752,7 @@ Outcome: Eliminated`;
     const TABS = [
       { id: "overview", label: "Overview" },
       { id: "teams", label: "Teams" },
+      { id: "events", label: "Events" },
       { id: "usage", label: "Usage" },
       { id: "devices", label: "Devices" }
     ];
@@ -10739,8 +10784,8 @@ Outcome: Eliminated`;
       } })));
     }
     function PlatformPill({ plat }) {
-      const colors = { ios: C.blue, android: C.green, mac: C.faint, windows: C.amber, other: C.faint };
-      const icons = { ios: "\u{1F34E}", android: "\u{1F916}", mac: "\u{1F4BB}", windows: "\u{1FA9F}", other: "?" };
+      const colors = { ios: C.blue, android: C.green, mac: C.faint, windows: C.amber, other: C.faint, unknown: C.faint };
+      const icons = { ios: "\u{1F34E}", android: "\u{1F916}", mac: "\u{1F4BB}", windows: "\u{1FA9F}", other: "?", unknown: "?" };
       return /* @__PURE__ */ React.createElement("span", { style: {
         fontSize: 10,
         padding: "2px 6px",
@@ -10761,33 +10806,29 @@ Outcome: Eliminated`;
       const d = xs.map((x, i) => `${i === 0 ? "M" : "L"} ${x} ${ys[i]}`).join(" ");
       return /* @__PURE__ */ React.createElement("svg", { width: W, height: H, style: { display: "block" } }, /* @__PURE__ */ React.createElement("path", { d, fill: "none", stroke: C.accent, strokeWidth: 1.5 }), xs.map((x, i) => /* @__PURE__ */ React.createElement("circle", { key: i, cx: x, cy: ys[i], r: 2, fill: C.accent })));
     }
-    const style = {
-      outer: {
-        minHeight: "100vh",
-        background: C.bg,
-        color: C.ink,
-        fontFamily: "-apple-system, 'Helvetica Neue', sans-serif"
-      },
-      header: {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "16px 20px",
-        borderBottom: `1px solid ${C.border}`,
-        background: C.card,
-        position: "sticky",
-        top: 0,
-        zIndex: 10
-      },
-      content: { padding: "20px 20px 40px", maxWidth: 900, margin: "0 auto" }
-    };
-    return /* @__PURE__ */ React.createElement("div", { style: style.outer }, /* @__PURE__ */ React.createElement("div", { style: style.header }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    const mono = { fontFamily: "monospace" };
+    return /* @__PURE__ */ React.createElement("div", { style: {
+      minHeight: "100vh",
+      background: C.bg,
+      color: C.ink,
+      fontFamily: "-apple-system,'Helvetica Neue',sans-serif"
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "16px 20px",
+      borderBottom: `1px solid ${C.border}`,
+      background: C.card,
+      position: "sticky",
+      top: 0,
+      zIndex: 10
+    } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 11,
       fontWeight: 700,
       letterSpacing: "0.12em",
       textTransform: "uppercase",
       color: C.faint
-    } }, "WaxLab"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 800 } }, "Admin Dashboard")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, [7, 30, 90].map((d) => /* @__PURE__ */ React.createElement(
+    } }, "WaxLab"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 800 } }, "Admin Dashboard")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } }, [7, 30, 90].map((d) => /* @__PURE__ */ React.createElement(
       "button",
       {
         key: d,
@@ -10805,7 +10846,7 @@ Outcome: Eliminated`;
       },
       d,
       "d"
-    ))), /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: loadData,
@@ -10819,7 +10860,7 @@ Outcome: Eliminated`;
           color: C.faint
         }
       },
-      "\u21BB Refresh"
+      "\u21BB"
     ), /* @__PURE__ */ React.createElement(
       "button",
       {
@@ -10855,7 +10896,8 @@ Outcome: Eliminated`;
       borderBottom: `1px solid ${C.border}`,
       background: C.card,
       padding: "0 20px",
-      gap: 2
+      gap: 2,
+      overflowX: "auto"
     } }, TABS.map((t) => /* @__PURE__ */ React.createElement(
       "button",
       {
@@ -10869,63 +10911,19 @@ Outcome: Eliminated`;
           fontWeight: tab === t.id ? 700 : 400,
           background: "transparent",
           color: tab === t.id ? C.accent : C.faint,
+          whiteSpace: "nowrap",
           borderBottom: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent"
         }
       },
       t.label
-    ))), /* @__PURE__ */ React.createElement("div", { style: style.content }, loading && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 60, color: C.faint, fontSize: 14 } }, "Loading analytics\u2026"), error && /* @__PURE__ */ React.createElement("div", { style: {
+    ))), /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 20px 40px", maxWidth: 900, margin: "0 auto" } }, loading && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 60, color: C.faint, fontSize: 14 } }, "Loading analytics\u2026"), error && /* @__PURE__ */ React.createElement("div", { style: {
       padding: 20,
       background: `${C.red}18`,
       border: `1px solid ${C.red}`,
       borderRadius: 10,
       color: C.red,
       fontSize: 13
-    } }, error), data && tab === "overview" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Stat, { label: "Total Teams", value: data.allTeams.length, color: C.accent }), /* @__PURE__ */ React.createElement(
-      Stat,
-      {
-        label: `Active (${range}d)`,
-        value: data.activeTeams.length,
-        sub: "teams with at least one ping",
-        color: C.green
-      }
-    ), /* @__PURE__ */ React.createElement(Stat, { label: "Total Events", value: data.totalEvents, color: C.blue }), /* @__PURE__ */ React.createElement(
-      Stat,
-      {
-        label: "Total Tests",
-        value: data.totalTests,
-        sub: `across all events`,
-        color: C.amber
-      }
-    )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 } }, /* @__PURE__ */ React.createElement(
-      Stat,
-      {
-        label: `Pings (${range}d)`,
-        value: data.pings.length,
-        sub: "analytics events fired",
-        color: C.faint
-      }
-    ), /* @__PURE__ */ React.createElement(
-      Stat,
-      {
-        label: "New Events",
-        value: data.featureCounts["event_created"] || 0,
-        sub: `last ${range} days`
-      }
-    ), /* @__PURE__ */ React.createElement(
-      Stat,
-      {
-        label: "Tests Created",
-        value: data.featureCounts["test_created"] || 0,
-        sub: `last ${range} days`
-      }
-    ), /* @__PURE__ */ React.createElement(
-      Stat,
-      {
-        label: "Exports",
-        value: data.featureCounts["excel_export"] || 0,
-        sub: `last ${range} days`
-      }
-    )), data.joinTimeline.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+    } }, error), data && tab === "overview" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Stat, { label: "Total Teams", value: data.allTeams.length, color: C.accent }), /* @__PURE__ */ React.createElement(Stat, { label: `Active (${range}d)`, value: data.activeTeams.length, sub: "teams with at least one ping", color: C.green }), /* @__PURE__ */ React.createElement(Stat, { label: "Total Events", value: data.totalEvents, color: C.blue }), /* @__PURE__ */ React.createElement(Stat, { label: "Total Tests", value: data.totalTests, sub: "across all events", color: C.amber })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 } }, /* @__PURE__ */ React.createElement(Stat, { label: `Pings (${range}d)`, value: data.pings.length, sub: "analytics events", color: C.faint }), /* @__PURE__ */ React.createElement(Stat, { label: "New Events", value: data.featureCounts["event_created"] || 0, sub: `last ${range} days` }), /* @__PURE__ */ React.createElement(Stat, { label: "Tests Created", value: data.featureCounts["test_created"] || 0, sub: `last ${range} days` }), /* @__PURE__ */ React.createElement(Stat, { label: "Unique Devices", value: data.deviceRows.length, sub: `last ${range} days`, color: C.blue })), data.joinTimeline.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
       background: C.card,
       border: `1px solid ${C.border}`,
       borderRadius: 12,
@@ -10961,12 +10959,7 @@ Outcome: Eliminated`;
       marginTop: 4,
       fontSize: 9,
       color: C.faint
-    } }, /* @__PURE__ */ React.createElement("span", null, data.joinTimeline[0]?.day), /* @__PURE__ */ React.createElement("span", null, data.joinTimeline[data.joinTimeline.length - 1]?.day))), /* @__PURE__ */ React.createElement("div", { style: {
-      background: C.card,
-      border: `1px solid ${C.border}`,
-      borderRadius: 12,
-      padding: 18
-    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "Test Type Distribution (all time)"), Object.entries(data.testCats).map(([cat, n]) => /* @__PURE__ */ React.createElement(
+    } }, /* @__PURE__ */ React.createElement("span", null, data.joinTimeline[0]?.day), /* @__PURE__ */ React.createElement("span", null, data.joinTimeline[data.joinTimeline.length - 1]?.day))), /* @__PURE__ */ React.createElement("div", { style: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "Test Type Distribution (all time)"), Object.entries(data.testCats).map(([cat, n]) => /* @__PURE__ */ React.createElement(
       MiniBar,
       {
         key: cat,
@@ -10975,7 +10968,7 @@ Outcome: Eliminated`;
         max: data.totalTests,
         color: cat === "glide" ? C.blue : cat === "kick" ? C.green : C.amber
       }
-    )), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.faint, marginTop: 8 } }, "Total: ", data.totalTests, " tests across ", data.totalEvents, " events"))), data && tab === "teams" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.faint, marginBottom: 14 } }, data.allTeams.length, " teams total \xB7 ", data.activeTeams.length, " active in last ", range, " days"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, data.teamRows.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.code, style: {
+    )), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.faint, marginTop: 8 } }, data.totalTests, " tests across ", data.totalEvents, " events"))), data && tab === "teams" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.faint, marginBottom: 14 } }, data.allTeams.length, " teams \xB7 ", data.activeTeams.length, " active in last ", range, " days"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, data.teamRows.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.code, style: {
       background: C.card,
       border: `1px solid ${C.border}`,
       borderRadius: 10,
@@ -10986,12 +10979,7 @@ Outcome: Eliminated`;
       justifyContent: "space-between",
       alignItems: "center",
       marginBottom: 6
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("span", { style: {
-      fontFamily: "monospace",
-      fontSize: 15,
-      fontWeight: 800,
-      color: C.ink
-    } }, t.code), t.active && /* @__PURE__ */ React.createElement("span", { style: {
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { ...mono, fontSize: 15, fontWeight: 800 } }, t.code), t.active && /* @__PURE__ */ React.createElement("span", { style: {
       fontSize: 9,
       fontWeight: 700,
       padding: "2px 6px",
@@ -10999,7 +10987,25 @@ Outcome: Eliminated`;
       background: `${C.green}22`,
       color: C.green,
       letterSpacing: "0.06em"
-    } }, "ACTIVE")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16, fontSize: 12 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.ink } }, t.events), " events"), /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.ink } }, t.devices), " devices"), /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.ink } }, t.joins), " joins"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4 } }, Object.keys(t.platforms).map((plat) => /* @__PURE__ */ React.createElement(PlatformPill, { key: plat, plat })), t.lastSeen && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.faint, marginLeft: 4 } }, "last seen ", new Date(t.lastSeen).toLocaleDateString())))))), data && tab === "usage" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    } }, "ACTIVE")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16, fontSize: 12 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.ink } }, t.events), " events"), /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.ink } }, t.devices), " devices"), /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: C.ink } }, t.joins), " joins"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4 } }, Object.keys(t.platforms).map((plat) => /* @__PURE__ */ React.createElement(PlatformPill, { key: plat, plat })), t.lastSeen && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.faint, marginLeft: 4 } }, "last seen ", new Date(t.lastSeen).toLocaleDateString())))))), data && tab === "events" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.faint, marginBottom: 14 } }, data.eventRows.length, " events across all teams \u2014 sorted most recent first"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, data.eventRows.map((ev) => /* @__PURE__ */ React.createElement("div", { key: ev.id, style: {
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 10,
+      padding: "12px 16px"
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: 4
+    } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 700 } }, ev.name), ev.raceName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint } }, ev.raceName)), /* @__PURE__ */ React.createElement("span", { style: {
+      ...mono,
+      fontSize: 11,
+      fontWeight: 700,
+      background: `${C.accent}18`,
+      color: C.accent,
+      padding: "2px 8px",
+      borderRadius: 4
+    } }, ev.teamCode)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: C.faint } }, ev.date && /* @__PURE__ */ React.createElement("span", null, "\u{1F4C5} ", ev.date), ev.location && /* @__PURE__ */ React.createElement("span", null, "\u{1F4CD} ", ev.location), /* @__PURE__ */ React.createElement("span", null, "\u{1F4BC} ", ev.sessions, " session", ev.sessions !== 1 ? "s" : ""), /* @__PURE__ */ React.createElement("span", null, "\u{1F9EA} ", ev.tests, " test", ev.tests !== 1 ? "s" : "")))))), data && tab === "usage" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
       background: C.card,
       border: `1px solid ${C.border}`,
       borderRadius: 12,
@@ -11035,46 +11041,23 @@ Outcome: Eliminated`;
           color: cat === "glide" ? C.blue : cat === "kick" ? C.green : C.amber
         }
       );
-    }))), data && tab === "devices" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 } }, Object.entries(data.platformTotals).sort((a, b) => b[1] - a[1]).map(([plat, count]) => /* @__PURE__ */ React.createElement(Stat, { key: plat, label: plat, value: count, sub: "total pings" }))), /* @__PURE__ */ React.createElement("div", { style: {
+    }))), data && tab === "devices" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 } }, /* @__PURE__ */ React.createElement(Stat, { label: "Unique Devices", value: data.deviceRows.length, sub: `last ${range} days`, color: C.accent }), Object.entries(data.platformTotals).sort((a, b) => b[1] - a[1]).map(([plat, count]) => /* @__PURE__ */ React.createElement(Stat, { key: plat, label: plat, value: count, sub: "pings" }))), /* @__PURE__ */ React.createElement("div", { style: {
       background: C.card,
       border: `1px solid ${C.border}`,
       borderRadius: 12,
       padding: 18,
       marginBottom: 16
-    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "Devices per Team"), data.teamRows.filter((t) => t.devices > 0).map((t) => /* @__PURE__ */ React.createElement("div", { key: t.code, style: {
-      display: "flex",
-      alignItems: "center",
-      gap: 10,
-      marginBottom: 10
-    } }, /* @__PURE__ */ React.createElement("span", { style: {
-      fontFamily: "monospace",
-      fontSize: 12,
-      fontWeight: 700,
-      width: 100,
-      flexShrink: 0,
-      color: C.ink
-    } }, t.code), /* @__PURE__ */ React.createElement("div", { style: {
-      flex: 1,
-      height: 8,
-      background: C.border,
-      borderRadius: 4,
-      overflow: "hidden"
+    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "All Devices \u2014 last ", range, " days (", data.deviceRows.length, " unique)"), data.deviceRows.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.faint } }, "No device pings yet in this window. Devices appear here after any user joins a team."), data.deviceRows.map((d) => /* @__PURE__ */ React.createElement("div", { key: d.id, style: {
+      borderBottom: `1px solid ${C.border}`,
+      paddingBottom: 10,
+      marginBottom: 10,
+      lastChild: { borderBottom: "none" }
     } }, /* @__PURE__ */ React.createElement("div", { style: {
-      height: "100%",
-      width: `${Math.min(
-        100,
-        t.devices / Math.max(...data.teamRows.map((r) => r.devices), 1) * 100
-      )}%`,
-      background: C.accent,
-      borderRadius: 4
-    } })), /* @__PURE__ */ React.createElement("span", { style: {
-      fontSize: 12,
-      fontWeight: 700,
-      fontFamily: "monospace",
-      width: 24,
-      textAlign: "right",
-      color: C.ink
-    } }, t.devices), /* @__PURE__ */ React.createElement("div", { style: { width: 120 } }, Object.keys(t.platforms).map((p) => /* @__PURE__ */ React.createElement(PlatformPill, { key: p, plat: p })))))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, lineHeight: 1.6 } }, "Device IDs are anonymous random UUIDs stored in localStorage. No personally identifiable information is collected. Multiple users on the same device share one device ID."))));
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: 4
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(PlatformPill, { plat: d.platform }), /* @__PURE__ */ React.createElement("span", { style: { ...mono, fontSize: 11, color: C.faint } }, d.id.slice(0, 16), "\u2026")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: C.faint, ...mono } }, d.pingCount, " ping", d.pingCount !== 1 ? "s" : "")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11 } }, /* @__PURE__ */ React.createElement("span", { style: { color: C.faint } }, "Teams: ", d.teams.map((tc) => /* @__PURE__ */ React.createElement("span", { key: tc, style: { fontWeight: 700, color: C.ink, marginLeft: 3 } }, tc)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: C.faint, marginTop: 3 } }, /* @__PURE__ */ React.createElement("span", null, "First: ", new Date(d.firstSeen).toLocaleDateString()), /* @__PURE__ */ React.createElement("span", null, "Last: ", new Date(d.lastSeen).toLocaleDateString()), /* @__PURE__ */ React.createElement("span", null, "Actions: ", d.eventTypes.join(", ")))))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, lineHeight: 1.6 } }, "Device IDs are anonymous random UUIDs stored in localStorage \u2014 no personally identifiable information is collected. Multiple users on the same physical device and browser share one device ID."))));
   }
 })();
 
