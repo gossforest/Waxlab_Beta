@@ -120,17 +120,23 @@ var AppBundle = (() => {
       const ta = aMap[id], tb = bMap[id];
       if (!ta) return tb;
       if (!tb) return ta;
-      const richer = fieldScore(ta) >= fieldScore(tb) ? ta : tb;
-      const other = richer === ta ? tb : ta;
+      const tsA = ta._savedAt || ta.createdAt || "";
+      const tsB = tb._savedAt || tb.createdAt || "";
+      const aWins = tsA > tsB || tsA === tsB && fieldScore(ta) >= fieldScore(tb);
+      const richer = aWins ? ta : tb;
+      const other = aWins ? tb : ta;
       return {
         ...other,
         ...richer,
+        // Always union array fields — never let spread silently discard one side
         skis: mergeSkis(ta.skis, tb.skis),
         rounds: mergeRounds(ta.rounds, tb.rounds),
         snowTemps: unionById([...ta.snowTemps || []], [...tb.snowTemps || []], (t) => t.ts),
         airTemps: unionById([...ta.airTemps || []], [...tb.airTemps || []], (t) => t.ts),
         glideOutRuns: unionById([...ta.glideOutRuns || []], [...tb.glideOutRuns || []], (r) => r.id),
-        notes: ta.notes || tb.notes || ""
+        name: ta.name || tb.name || "",
+        notes: ta.notes || tb.notes || "",
+        testers: ta.testers || tb.testers || ""
       };
     });
   }
@@ -142,12 +148,16 @@ var AppBundle = (() => {
       const sa = aMap[id], sb = bMap[id];
       if (!sa) return sb;
       if (!sb) return sa;
-      const richer = fieldScore(sa) >= fieldScore(sb) ? sa : sb;
-      const other = richer === sa ? sb : sa;
+      const tsA = sa._savedAt || sa.createdAt || "";
+      const tsB = sb._savedAt || sb.createdAt || "";
+      const aWins = tsA > tsB || tsA === tsB && fieldScore(sa) >= fieldScore(sb);
+      const richer = aWins ? sa : sb;
+      const other = aWins ? sb : sa;
       return {
         ...other,
         ...richer,
         tests: mergeTests(sa.tests, sb.tests),
+        name: sa.name || sb.name || "",
         notes: sa.notes || sb.notes || ""
       };
     });
@@ -156,15 +166,26 @@ var AppBundle = (() => {
     const sessions = mergeSessions(a.sessions, b.sessions);
     const schedule = unionById(a.schedule || [], b.schedule || [], (w) => w.id);
     const raceTimes = unionById(a.raceTimes || [], b.raceTimes || [], (r) => r.id);
+    const tsA = a._savedAt || a.createdAt || "";
+    const tsB = b._savedAt || b.createdAt || "";
+    const aWins = tsA > tsB || tsA === tsB && fieldScore(a) >= fieldScore(b);
+    const base = aWins ? b : a;
+    const top = aWins ? a : b;
     return {
-      ...b,
-      // start with remote as base
-      ...a,
-      // local fields override (local user's edits win on scalars)
-      // Explicitly union array/object fields rather than letting spread pick one side
+      ...base,
+      ...top,
+      // Always union arrays — never let the spread silently pick one side
       sessions,
       schedule,
-      raceTimes
+      raceTimes,
+      // Prefer non-empty string for key descriptive fields from either side
+      name: (a.name && a.name !== "New Event" ? a.name : null) || (b.name && b.name !== "New Event" ? b.name : null) || a.name || b.name || "",
+      raceName: a.raceName || b.raceName || "",
+      location: a.location || b.location || "",
+      notes: a.notes || b.notes || "",
+      raceFeedback: a.raceFeedback || b.raceFeedback || "",
+      raceWaxChoice: a.raceWaxChoice || b.raceWaxChoice || "",
+      raceWaxReason: a.raceWaxReason || b.raceWaxReason || ""
     };
   }
   function fieldScore(obj) {
