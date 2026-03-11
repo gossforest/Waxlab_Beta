@@ -7044,8 +7044,9 @@ Outcome: Eliminated`;
     const suggestion = tab === "tournament" && !winner ? suggestPair(roundState) : null;
     const isGlideOut = test.category === "glide-out" || test.type === "Glide Out";
     const TABS = [
-      ...isGlideOut ? [{ id: "glideout", label: "Glide Out" }] : [{ id: "tournament", label: "Tournament" }],
+      { id: "setup", label: "Setup" },
       { id: "fleet", label: "Fleet" },
+      ...isGlideOut ? [{ id: "glideout", label: "Glide Out" }] : [{ id: "tournament", label: "Tournament" }],
       { id: "results", label: "Results" },
       { id: "notes", label: "Notes" }
     ];
@@ -7777,81 +7778,7 @@ Outcome: Eliminated`;
         },
         "Declare Tie"
       )), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 10, textAlign: "center" } }, "Or keep testing \u2014 select two skis above to continue"));
-    })()), tab === "glideout" && /* @__PURE__ */ React.createElement(GlideOutTab, { test, onUpdate, isBlind }), tab === "fleet" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Category"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.category || "glide", onChange: (e) => upd({ category: e.target.value, type: "" }) }, /* @__PURE__ */ React.createElement("option", { value: "glide" }, "Glide"), /* @__PURE__ */ React.createElement("option", { value: "kick" }, "Kick"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Test Type"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.type || "", onChange: (e) => upd({ type: e.target.value }) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), (test.category === "glide" || test.category === "glide-out" ? ["Topcoat", "Paraffin", "Hand structure", "Grind"] : test.category === "kick" ? ["Binder", "Mid layer", "Top layer", "Full stack"] : []).map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o))))), /* @__PURE__ */ React.createElement(TI, { label: "Test Name", value: test.name, onChange: (v) => upd({ name: v }), style: { marginBottom: 8 }, mic: true }), /* @__PURE__ */ React.createElement(
-      TI,
-      {
-        label: "Tester(s)",
-        value: test.testers || "",
-        onChange: (v) => upd({ testers: v }),
-        placeholder: "Names or initials of skiers conducting this test",
-        style: { marginBottom: 8 },
-        mic: true
-      }
-    ), test.category === "kick" && (() => {
-      const raters = test.raters || [];
-      return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Raters (optional)"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 6, lineHeight: 1.5 } }, "Add named raters to collect independent kick/glide scores per person. Ratings are averaged for rankings."), raters.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 } }, raters.map((r) => /* @__PURE__ */ React.createElement("div", { key: r, style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-        background: "var(--paper-2)",
-        border: "1px solid var(--rule)",
-        borderRadius: 6,
-        padding: "4px 10px",
-        fontSize: 13
-      } }, /* @__PURE__ */ React.createElement("span", null, r), /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: () => upd({ raters: raters.filter((x) => x !== r) }),
-          style: {
-            background: "none",
-            border: "none",
-            color: "var(--ink-faint)",
-            cursor: "pointer",
-            fontSize: 15,
-            lineHeight: 1,
-            padding: "0 0 0 4px"
-          }
-        },
-        "\xD7"
-      )))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement(
-        "input",
-        {
-          className: "inp",
-          value: newRater,
-          onChange: (e) => setNewRater(e.target.value),
-          onKeyDown: (e) => {
-            if (e.key === "Enter" && newRater.trim() && !raters.includes(newRater.trim())) {
-              upd({ raters: [...raters, newRater.trim()] });
-              setNewRater("");
-            }
-          },
-          placeholder: "Rater name\u2026",
-          style: { flex: 1, marginBottom: 0 }
-        }
-      ), /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          className: "btn-ghost",
-          style: { fontSize: 13, padding: "6px 12px", minHeight: 36, flexShrink: 0 },
-          onClick: () => {
-            const n = newRater.trim();
-            if (n && !raters.includes(n)) {
-              upd({ raters: [...raters, n] });
-              setNewRater("");
-            }
-          }
-        },
-        "Add"
-      )));
-    })(), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, test.deadline ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, new Date(test.deadline).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }), test.deadlineLabel ? ` \u2014 ${test.deadlineLabel}` : "")) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, "No deadline set")), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => setShowDeadlinePicker(true),
-        className: "btn-ghost",
-        style: { fontSize: 13, padding: "6px 12px", minHeight: 34 }
-      },
-      /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement(TimerIcon, { size: 13, color: "currentColor" }), test.deadline ? "Edit Deadline" : "Set Deadline")
-    )), fleets.filter((f) => f.category === test.category || test.category === "glide-out" && f.category === "glide").length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Load from Fleet Registry"), fleets.filter((f) => f.category === test.category || test.category === "glide-out" && f.category === "glide").map((fleet) => {
+    })()), tab === "glideout" && /* @__PURE__ */ React.createElement(GlideOutTab, { test, onUpdate, isBlind }), tab === "fleet" && /* @__PURE__ */ React.createElement("div", null, fleets.filter((f) => f.category === test.category || test.category === "glide-out" && f.category === "glide").length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Load from Fleet Registry"), fleets.filter((f) => f.category === test.category || test.category === "glide-out" && f.category === "glide").map((fleet) => {
       const alreadyLoaded = fleet.skis.every(
         (fs) => (test.skis || []).some((s) => s.id === fs.id)
       );
@@ -7901,15 +7828,7 @@ Outcome: Eliminated`;
         },
         alreadyLoaded ? "\u2713 Loaded" : `Load ${fleet.skis.length} skis`
       ));
-    })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, marginTop: 4 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 0 } }, "Registered Skis"), /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13 } }, /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        type: "checkbox",
-        checked: !!test.blindMode,
-        onChange: (e) => upd({ blindMode: e.target.checked, blindRevealed: false }),
-        style: { width: 16, height: 16 }
-      }
-    ), "Blind Mode")), (test.skis || []).map((ski) => editingId === ski.id ? /* @__PURE__ */ React.createElement(
+    })), /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 6 } }, "Registered Skis"), (test.skis || []).map((ski) => editingId === ski.id ? /* @__PURE__ */ React.createElement(
       SkiEditInline,
       {
         key: ski.id,
@@ -8111,7 +8030,98 @@ Outcome: Eliminated`;
         placeholder: "Iron temp, layers\u2026",
         style: { marginBottom: 8 }
       }
-    ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: addSki, style: { flex: 1 } }, "Add to Fleet"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", onClick: addSki, style: { flex: 1 } }, "Add Another")))), tab === "results" && /* @__PURE__ */ React.createElement("div", null, isGlideOut ? /* @__PURE__ */ React.createElement(GlideOutResults, { test, onUpdate, isBlind, useCelsius }) : !test.skis?.length ? /* @__PURE__ */ React.createElement("div", { style: { color: "var(--ink-faint)", fontSize: 14, paddingTop: 16 } }, "No skis registered.") : /* @__PURE__ */ React.createElement(React.Fragment, null, !isGlide && test.useRatingRankings && (test.skis || []).some((s) => s.standing === "Winner") && (() => {
+    ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: addSki, style: { flex: 1 } }, "Add to Fleet"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", onClick: addSki, style: { flex: 1 } }, "Add Another")))), tab === "setup" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Category"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.category || "glide", onChange: (e) => upd({ category: e.target.value, type: "" }) }, /* @__PURE__ */ React.createElement("option", { value: "glide" }, "Glide"), /* @__PURE__ */ React.createElement("option", { value: "kick" }, "Kick"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Test Type"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.type || "", onChange: (e) => upd({ type: e.target.value }) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), (test.category === "glide" || test.category === "glide-out" ? ["Topcoat", "Paraffin", "Hand structure", "Grind"] : test.category === "kick" ? ["Binder", "Mid layer", "Top layer", "Full stack"] : []).map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o))))), /* @__PURE__ */ React.createElement(TI, { label: "Test Name", value: test.name, onChange: (v) => upd({ name: v }), style: { marginBottom: 8 }, mic: true }), /* @__PURE__ */ React.createElement(
+      TI,
+      {
+        label: "Tester(s)",
+        value: test.testers || "",
+        onChange: (v) => upd({ testers: v }),
+        placeholder: "Names or initials of skiers conducting this test",
+        style: { marginBottom: 12 },
+        mic: true
+      }
+    ), /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Deadline"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, test.deadline ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, new Date(test.deadline).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }), test.deadlineLabel ? ` \u2014 ${test.deadlineLabel}` : "")) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, "No deadline set")), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => setShowDeadlinePicker(true),
+        className: "btn-ghost",
+        style: { fontSize: 13, padding: "6px 12px", minHeight: 34 }
+      },
+      /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement(TimerIcon, { size: 13, color: "currentColor" }), test.deadline ? "Edit" : "Set Deadline")
+    )), /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "10px 14px",
+      background: "var(--paper-2)",
+      borderRadius: 8,
+      border: "1.5px solid var(--rule)",
+      marginBottom: 12
+    } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 600 } }, "Blind Mode"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, "Hide product names from testers until revealed")), /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 6, cursor: "pointer" } }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "checkbox",
+        checked: !!test.blindMode,
+        onChange: (e) => upd({ blindMode: e.target.checked, blindRevealed: false }),
+        style: { width: 18, height: 18 }
+      }
+    ))), test.category === "kick" && (() => {
+      const raters = test.raters || [];
+      return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Raters (optional)"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 6, lineHeight: 1.5 } }, "Add named raters to collect independent kick/glide scores per person. Ratings are averaged for rankings."), raters.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 } }, raters.map((r) => /* @__PURE__ */ React.createElement("div", { key: r, style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        background: "var(--paper-2)",
+        border: "1px solid var(--rule)",
+        borderRadius: 6,
+        padding: "4px 10px",
+        fontSize: 13
+      } }, /* @__PURE__ */ React.createElement("span", null, r), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => upd({ raters: raters.filter((x) => x !== r) }),
+          style: {
+            background: "none",
+            border: "none",
+            color: "var(--ink-faint)",
+            cursor: "pointer",
+            fontSize: 15,
+            lineHeight: 1,
+            padding: "0 0 0 4px"
+          }
+        },
+        "\xD7"
+      )))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          className: "inp",
+          value: newRater,
+          onChange: (e) => setNewRater(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Enter" && newRater.trim() && !raters.includes(newRater.trim())) {
+              upd({ raters: [...raters, newRater.trim()] });
+              setNewRater("");
+            }
+          },
+          placeholder: "Rater name\u2026",
+          style: { flex: 1, marginBottom: 0 }
+        }
+      ), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "btn-ghost",
+          style: { fontSize: 13, padding: "6px 12px", minHeight: 36, flexShrink: 0 },
+          onClick: () => {
+            const n = newRater.trim();
+            if (n && !raters.includes(n)) {
+              upd({ raters: [...raters, n] });
+              setNewRater("");
+            }
+          }
+        },
+        "Add"
+      )));
+    })()), tab === "results" && /* @__PURE__ */ React.createElement("div", null, isGlideOut ? /* @__PURE__ */ React.createElement(GlideOutResults, { test, onUpdate, isBlind, useCelsius }) : !test.skis?.length ? /* @__PURE__ */ React.createElement("div", { style: { color: "var(--ink-faint)", fontSize: 14, paddingTop: 16 } }, "No skis registered.") : /* @__PURE__ */ React.createElement(React.Fragment, null, !isGlide && test.useRatingRankings && (test.skis || []).some((s) => s.standing === "Winner") && (() => {
       const rankings = computeKickRankings(test);
       if (!rankings.length) return null;
       const hasRatings = rankings.some((e) => e.ratingScore != null);
@@ -8833,8 +8843,8 @@ Outcome: Eliminated`;
       setActiveSessionId(s.id);
     }
     const TABS = [
-      { id: "sessions", label: "Sessions" },
       { id: "schedule", label: "Schedule" },
+      { id: "sessions", label: "Sessions" },
       { id: "raceday", label: "Race Day" },
       { id: "trend", label: "Trend" },
       { id: "compare", label: "Compare" },
@@ -10802,6 +10812,7 @@ Outcome: Eliminated`;
     const [data, setData] = useState(null);
     const [tab, setTab] = useState("overview");
     const [range, setRange] = useState(30);
+    const [pingMsg, setPingMsg] = useState(null);
     useEffect(() => {
       loadData();
     }, [range]);
@@ -11261,7 +11272,6 @@ Outcome: Eliminated`;
       const lastErr = lsGet("waxlab:lastPingError");
       const myId = getDeviceId();
       const myPlat = getDevicePlatform();
-      const [pingMsg, setPingMsg] = React.useState(null);
       async function testPing() {
         setPingMsg("Sending\u2026");
         try {
