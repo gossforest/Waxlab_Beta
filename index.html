@@ -10138,14 +10138,17 @@ Outcome: Eliminated`;
     );
   }
   function WindowEditor({ win, onSave, onCancel, eventDate }) {
-    const base = (() => {
-      if (eventDate) {
-        const iso = eventDate.slice(0, 10);
-        if (/^\d{4}-\d{2}-\d{2}$/.test(iso) && !isNaN(new Date(iso))) return iso;
-        const d = new Date(eventDate);
-        if (!isNaN(d)) return d.toISOString().slice(0, 10);
-      }
-      return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    function parseDate(str) {
+      if (!str) return null;
+      const iso = str.slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(iso) && !isNaN(new Date(iso))) return iso;
+      const d = new Date(str);
+      return isNaN(d) ? null : d.toISOString().slice(0, 10);
+    }
+    const initDate = (() => {
+      const fromWin = parseDate(win.windowStart || win.windowClose || win.resultBy);
+      if (fromWin) return fromWin;
+      return parseDate(eventDate) || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     })();
     const toLocal = (iso) => {
       if (!iso) return "";
@@ -10153,14 +10156,12 @@ Outcome: Eliminated`;
       if (isNaN(d)) return "";
       return d.toTimeString().slice(0, 5);
     };
-    const fromLocal = (time) => {
-      if (!time) return null;
-      return `${base}T${time}:00`;
-    };
     const [label, setLabel] = useState(win.label || "");
+    const [winDate, setWinDate] = useState(initDate);
     const [startTime, setStartTime] = useState(toLocal(win.windowStart));
     const [closeTime, setCloseTime] = useState(toLocal(win.windowClose));
     const [resultTime, setResultTime] = useState(toLocal(win.resultBy));
+    const fromLocal = (time) => time ? `${winDate}T${time}:00` : null;
     const [testEntries, setTestEntries] = useState(() => resolveTestEntries(win));
     const [pendingCat, setPendingCat] = useState("glide");
     const [pendingType, setPendingType] = useState("");
@@ -10178,6 +10179,7 @@ Outcome: Eliminated`;
       onSave({
         ...win,
         label,
+        winDate,
         windowStart: fromLocal(startTime),
         windowClose: fromLocal(closeTime),
         resultBy: fromLocal(resultTime) || fromLocal(closeTime),
@@ -10205,7 +10207,24 @@ Outcome: Eliminated`;
         placeholder: "e.g. Sprint Men's Glide",
         style: { marginBottom: 10 }
       }
-    ), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Window opens"), /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Date"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "inp",
+        type: "date",
+        value: winDate,
+        onChange: (e) => setWinDate(e.target.value),
+        style: { flex: 1, marginBottom: 0 }
+      }
+    ), winDate && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)", whiteSpace: "nowrap" } }, (/* @__PURE__ */ new Date(winDate + "T12:00:00")).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })), eventDate && winDate && eventDate !== winDate && /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: "btn-ghost",
+        onClick: () => setWinDate(eventDate),
+        style: { fontSize: 11, padding: "4px 10px", minHeight: 28, whiteSpace: "nowrap", flexShrink: 0 }
+      },
+      "Use race date"
+    ))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Window opens"), /* @__PURE__ */ React.createElement(
       "input",
       {
         className: "inp",
@@ -10695,41 +10714,7 @@ Outcome: Eliminated`;
     ), event.date && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", whiteSpace: "nowrap" } }, (/* @__PURE__ */ new Date(event.date + "T12:00:00")).toLocaleDateString(
       "en-US",
       { weekday: "short", month: "short", day: "numeric", year: "numeric" }
-    ))), /* @__PURE__ */ React.createElement(ScheduleTimeline, { schedule, raceTimes }), mismatchedWindows.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
-      padding: "12px 14px",
-      borderRadius: 8,
-      marginBottom: 12,
-      background: "rgba(255,159,10,0.1)",
-      border: "1.5px solid var(--amber)",
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      gap: 12
-    } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "var(--amber)", marginBottom: 2 } }, "\u26A0 Schedule anchored to wrong date"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-mid)", lineHeight: 1.5 } }, mismatchedWindows.length, " window", mismatchedWindows.length !== 1 ? "s" : "", " use", mismatchedWindows.length === 1 ? "s" : "", " ", /* @__PURE__ */ React.createElement("span", { className: "mono" }, schedWindowDate(mismatchedWindows[0])), " but the race date is", " ", /* @__PURE__ */ React.createElement("span", { className: "mono" }, eventDateStr), ". Deadlines will fire on the wrong day.")), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        className: "btn",
-        onClick: () => rebaseSchedule(eventDateStr),
-        style: {
-          fontSize: 12,
-          padding: "6px 14px",
-          minHeight: 34,
-          whiteSpace: "nowrap",
-          flexShrink: 0
-        }
-      },
-      "Move to ",
-      (/* @__PURE__ */ new Date(eventDateStr + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-    )), !eventDateStr && schedule.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
-      padding: "10px 14px",
-      borderRadius: 8,
-      marginBottom: 12,
-      background: "var(--paper-2)",
-      border: "1.5px solid var(--rule)",
-      fontSize: 12,
-      color: "var(--ink-mid)",
-      lineHeight: 1.5
-    } }, "\u{1F4A1} Set a ", /* @__PURE__ */ React.createElement("strong", null, "Race Date"), " in the Race Day tab so schedule windows are anchored to the correct day."), schedule.length === 0 && !editingId && /* @__PURE__ */ React.createElement("div", { style: {
+    ))), /* @__PURE__ */ React.createElement(ScheduleTimeline, { schedule, raceTimes }), schedule.length === 0 && !editingId && /* @__PURE__ */ React.createElement("div", { style: {
       textAlign: "center",
       padding: "32px 0",
       color: "var(--ink-faint)",
@@ -10765,13 +10750,8 @@ Outcome: Eliminated`;
         letterSpacing: "0.06em"
       } }, status.label), w.activated && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--green)", fontWeight: 600 } }, "\u2713 sessions created")), (() => {
         const wd = schedWindowDate(w);
-        const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-        const showDate = wd && wd !== today;
-        const dateLbl = showDate ? (/* @__PURE__ */ new Date(wd + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
-        return /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 3 } }, showDate && /* @__PURE__ */ React.createElement("span", { style: {
-          color: wd !== eventDateStr && eventDateStr ? "var(--amber)" : "var(--ink-mid)",
-          marginRight: 5
-        } }, dateLbl, " \xB7"), fmtTimeLocal(w.windowStart), " \u2192 ", fmtTimeLocal(w.windowClose), w.resultBy && w.resultBy !== w.windowClose && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--amber)" } }, " \xB7 result by ", fmtTimeLocal(w.resultBy)));
+        const dateLbl = wd ? (/* @__PURE__ */ new Date(wd + "T12:00:00")).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : null;
+        return /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 3 } }, dateLbl && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-mid)", marginRight: 5 } }, dateLbl, " \xB7"), fmtTimeLocal(w.windowStart), " \u2192 ", fmtTimeLocal(w.windowClose), w.resultBy && w.resultBy !== w.windowClose && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--amber)" } }, " \xB7 result by ", fmtTimeLocal(w.resultBy)));
       })(), (() => {
         const entries = resolveTestEntries(w);
         if (!entries.length) return null;
