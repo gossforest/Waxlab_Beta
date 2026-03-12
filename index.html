@@ -235,7 +235,14 @@ var AppBundle = (() => {
     const evs = lsGet(`waxlab:events:${teamCode}`) || [];
     const deleted = new Set(lsGet(`waxlab:deleted:${teamCode}`) || []);
     const filtered = deleted.size ? evs.filter((e) => !deleted.has(e.id)) : evs;
-    return filtered.map(migrateEvent);
+    return filtered.map((ev) => {
+      try {
+        return migrateEvent(ev);
+      } catch (e) {
+        console.error("migrateEvent failed on event", ev?.id, e);
+        return ev;
+      }
+    });
   }
   async function bgSyncEvents(teamCode, setEvents) {
     if (!db) return;
@@ -9840,6 +9847,64 @@ Outcome: Eliminated`;
       copied ? "\u2713" : "Share"
     ), /* @__PURE__ */ React.createElement("button", { onClick: onLeave, className: "btn-text", style: { fontSize: 12 } }, "Switch")));
   }
+  var AppErrorBoundary = class extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = { error: null, info: null };
+    }
+    static getDerivedStateFromError(error) {
+      return { error };
+    }
+    componentDidCatch(error, info) {
+      this.setState({ error, info });
+      console.error("App-level crash:", error, info);
+    }
+    render() {
+      if (this.state.error) {
+        const msg = this.state.error?.message || String(this.state.error);
+        const stack = (this.state.info?.componentStack || "").trim();
+        return /* @__PURE__ */ React.createElement("div", { style: { padding: 20, fontFamily: "monospace", maxWidth: 600, margin: "0 auto" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 700, color: "#ff3b30", marginBottom: 12 } }, "\u26A0 App crashed \u2014 error details below"), /* @__PURE__ */ React.createElement("div", { style: {
+          background: "#fff1f0",
+          border: "1.5px solid #ff3b30",
+          borderRadius: 10,
+          padding: 16,
+          marginBottom: 12
+        } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, marginBottom: 6 } }, msg), /* @__PURE__ */ React.createElement("pre", { style: { fontSize: 11, whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 } }, stack)), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => this.setState({ error: null, info: null }),
+            style: {
+              padding: "10px 20px",
+              borderRadius: 8,
+              background: "#ff3b30",
+              color: "#fff",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 14,
+              marginRight: 8
+            }
+          },
+          "Try again"
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => window.location.reload(),
+            style: {
+              padding: "10px 20px",
+              borderRadius: 8,
+              background: "transparent",
+              color: "#ff3b30",
+              border: "1.5px solid #ff3b30",
+              cursor: "pointer",
+              fontSize: 14
+            }
+          },
+          "Reload app"
+        ));
+      }
+      return this.props.children;
+    }
+  };
   function App() {
     const [teamCode, setTeamCode] = useState(null);
     const [events, setEvents] = useState([]);
@@ -10265,7 +10330,7 @@ Outcome: Eliminated`;
       }
     ));
   }
-  ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+  ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(AppErrorBoundary, null, React.createElement(App)));
   var SCHED_TEST_TYPES = [
     { id: "glide", label: "Glide" },
     { id: "kick", label: "Kick" },
