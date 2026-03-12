@@ -6873,6 +6873,63 @@ Outcome: Eliminated`;
       setOpen(false);
     } }, "Re-enter ", ski.id), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: () => setRewaxId(null) }, "Cancel"))));
   }
+  var TestViewErrorBoundary = class extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = { error: null, info: null };
+    }
+    static getDerivedStateFromError(error) {
+      return { error };
+    }
+    componentDidCatch(error, info) {
+      this.setState({ error, info });
+      console.error("TestView crash:", error, info);
+    }
+    render() {
+      if (this.state.error) {
+        const msg = this.state.error?.message || String(this.state.error);
+        const stack = this.state.info?.componentStack || "";
+        return /* @__PURE__ */ React.createElement("div", { style: { padding: 20, fontFamily: "monospace" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 16 } }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: this.props.onBack,
+            style: {
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "1.5px solid var(--rule)",
+              background: "var(--paper-2)",
+              cursor: "pointer",
+              fontSize: 13
+            }
+          },
+          "\u2190 Back"
+        ), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 700, color: "var(--red)" } }, "Test failed to load")), /* @__PURE__ */ React.createElement("div", { style: {
+          background: "rgba(255,59,48,0.07)",
+          border: "1.5px solid var(--red)",
+          borderRadius: 10,
+          padding: 16,
+          marginBottom: 12
+        } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "var(--red)", marginBottom: 8 } }, "Error: ", msg), /* @__PURE__ */ React.createElement("pre", { style: {
+          fontSize: 11,
+          color: "var(--ink-mid)",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all",
+          margin: 0
+        } }, stack.trim())), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 12 } }, "Test data that caused the crash:"), /* @__PURE__ */ React.createElement("pre", { style: {
+          fontSize: 10,
+          color: "var(--ink-mid)",
+          background: "var(--paper-2)",
+          borderRadius: 8,
+          padding: 12,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all",
+          maxHeight: 300,
+          overflow: "auto"
+        } }, JSON.stringify(this.props.test, null, 2)));
+      }
+      return this.props.children;
+    }
+  };
   function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], eventForecast = null, onUpdateEventForecast }) {
     const [tab, setTab] = useState(test.category === "glide-out" || test.type === "Glide Out" ? "glideout" : "tournament");
     const [undoStack, setUndoStack] = useState([]);
@@ -8751,7 +8808,7 @@ Outcome: Eliminated`;
     if (activeTestId) {
       const test = (session.tests || []).find((t) => t.id === activeTestId);
       if (!test) return null;
-      return /* @__PURE__ */ React.createElement(
+      return /* @__PURE__ */ React.createElement(TestViewErrorBoundary, { test, onBack: () => setActiveTestId(null) }, /* @__PURE__ */ React.createElement(
         TestView,
         {
           test,
@@ -8767,7 +8824,7 @@ Outcome: Eliminated`;
           eventForecast,
           onUpdateEventForecast
         }
-      );
+      ));
     }
     function createTest(cat, type) {
       const name = newTestName.trim() || (cat === "glide" ? "Glide Test" : cat === "glide-out" ? "Glide Out Test" : "Kick Test");
