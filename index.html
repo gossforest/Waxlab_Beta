@@ -2610,7 +2610,7 @@ Outcome: Eliminated`;
       "Dismiss"
     )));
   }
-  function CountdownBadge({ deadline }) {
+  function CountdownBadge({ deadline, completed }) {
     const [remaining, setRemaining] = useState(null);
     useEffect(() => {
       function tick() {
@@ -2622,6 +2622,13 @@ Outcome: Eliminated`;
       return () => clearInterval(id);
     }, [deadline]);
     if (remaining == null) return null;
+    if (completed) return /* @__PURE__ */ React.createElement("span", { className: "tag", style: {
+      background: "var(--green)",
+      color: "#fff",
+      fontSize: 9,
+      padding: "2px 6px",
+      borderRadius: 4
+    } }, "\u2713 Done");
     if (remaining <= 0) return /* @__PURE__ */ React.createElement("span", { className: "tag", style: {
       background: "var(--red)",
       color: "#fff",
@@ -8547,7 +8554,7 @@ Outcome: Eliminated`;
         },
         "Add"
       )), !isGlide && testers.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 5, lineHeight: 1.5 } }, "Kick test: each tester gets independent kick/glide sliders. Scores are averaged for rankings."));
-    })(), /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Deadline"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, test.deadline ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, new Date(test.deadline).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }), test.deadlineLabel ? ` \u2014 ${test.deadlineLabel}` : "")) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, "No deadline set")), /* @__PURE__ */ React.createElement(
+    })(), /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Deadline"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, test.deadline ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline, completed: !!test.completedAt }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, new Date(test.deadline).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }), test.deadlineLabel ? ` \u2014 ${test.deadlineLabel}` : "")) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, "No deadline set")), /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: () => setShowDeadlinePicker(true),
@@ -8924,7 +8931,7 @@ Outcome: Eliminated`;
         borderRadius: "50%",
         background: "var(--green)",
         flexShrink: 0
-      } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "var(--green)" } }, winner.id, " won"), test.completedAt && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "\xB7 ", fmtTime(test.completedAt))), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, fontSize: 11, color: "var(--amber)" } }, active.length, " ski", active.length !== 1 ? "s" : "", " still active")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } }, winner && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--green)", fontSize: 9 } }, "Winner"), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--amber)", fontSize: 9 } }, "Active"), test.deadline && /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline }), /* @__PURE__ */ React.createElement(
+      } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "var(--green)" } }, winner.id, " won"), test.completedAt && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "\xB7 ", fmtTime(test.completedAt))), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, fontSize: 11, color: "var(--amber)" } }, active.length, " ski", active.length !== 1 ? "s" : "", " still active")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } }, winner && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--green)", fontSize: 9 } }, "Winner"), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--amber)", fontSize: 9 } }, "Active"), test.deadline && /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline, completed: !!test.completedAt }), /* @__PURE__ */ React.createElement(
         "button",
         {
           onClick: () => setDeadlinePickerTest(test),
