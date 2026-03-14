@@ -2988,6 +2988,74 @@ Outcome: Eliminated`;
     t = t.replace(/\b(snow|air|temp)__(\d)/g, "$1 $2");
     return t;
   }
+  function connectionQuality() {
+    if (!navigator.onLine) return "offline";
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (!conn) return "good";
+    if (conn.type === "none") return "offline";
+    if (conn.effectiveType === "slow-2g" || conn.effectiveType === "2g") return "poor";
+    if (conn.downlink != null && conn.downlink < 0.5) return "poor";
+    if (conn.rtt != null && conn.rtt > 1e3) return "poor";
+    return "good";
+  }
+  async function parseVoiceCommandAI(transcript, knownIds) {
+    const quality = connectionQuality();
+    if (quality === "offline") return null;
+    const timeoutMs = quality === "poor" ? 1500 : 3e3;
+    const idList = (knownIds || []).join(", ") || "none registered";
+    const prompt = `You are parsing a voice command for a Nordic ski wax testing app.
+
+Known ski IDs in this test: ${idList}
+
+Voice transcript: "${transcript}"
+
+Parse this into a structured command. Return ONLY valid JSON, no markdown, no explanation.
+
+Possible actions and their fields:
+- advance: {"action":"advance","skiId":"<id>"}
+- eliminate: {"action":"eliminate","skiId":"<id>"}
+- winner: {"action":"winner","skiId":"<id>"}
+- restore: {"action":"restore","skiId":"<id>"} \u2014 bring an eliminated ski back
+- runnerup: {"action":"runnerup","skiId":"<id>"} \u2014 mark as runner-up / second place
+- pair: {"action":"pair","skiId":"<id1>","skiId2":"<id2>"} \u2014 compare two skis
+- rate: {"action":"rate","skiId":"<id>","glide":<1-10 or null>,"kick":<1-10 or null>}
+- note: {"action":"note","skiId":"<id>","text":"<note text>"}
+- form: {"action":"form","skiId":"<id>","form":"<block|powder|liquid|hard|klister|spray|paste>"}
+- temp: {"action":"temp","kind":"snow","val":<number in the unit spoken>}
+- temp: {"action":"temp","kind":"air","val":<number in the unit spoken>}
+- undo: {"action":"undo"}
+- blind: {"action":"blind"} \u2014 toggle blind mode reveal
+
+Rules:
+- Ski IDs are typically alphanumeric like "A1", "11a", "S3". Match spoken IDs to the known list.
+- The speaker may use phonetic alphabet (alpha, bravo, charlie...) or just letters/numbers.
+- Temperatures may be negative ("minus 5", "negative 3").
+- If the command doesn't match any action clearly, return: {"action":"unknown","raw":"${transcript}"}
+- Match intent liberally \u2014 "kick out B2", "drop ski 3", "next is A1" are all valid phrasings.`;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 150,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      clearTimeout(timeout);
+      if (!res.ok) throw new Error("API error");
+      const data = await res.json();
+      const text = (data.content || []).map((b) => b.text || "").join("").trim().replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+      const parsed = JSON.parse(text);
+      if (parsed && parsed.action) return parsed;
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
   function parseVoiceCommand(transcript, knownIds) {
     const norm = normaliseTranscript(transcript);
     const knownUpper = (knownIds || []).map((id) => id.toUpperCase());
@@ -3039,7 +3107,9 @@ Outcome: Eliminated`;
       { action: "winner", words: ["winner", "winners", "win", "wins", "first", "best", "choose", "select", "champion"] },
       { action: "runnerup", words: ["runnerup", "runner", "second", "2nd", "silver"] },
       { action: "pair", words: ["pair", "compare", "versus", "match", "race"] },
-      { action: "restore", words: ["restore", "back", "revive", "return", "undo", "reenter"] },
+      { action: "restore", words: ["restore", "revive", "return", "reenter", "rewax"] },
+      { action: "undo", words: ["undo", "back", "revert", "mistake"] },
+      { action: "blind", words: ["reveal", "blind", "unblind", "hide products", "show products"] },
       { action: "rate", words: ["rate", "rated", "rating", "score", "scored", "mark", "give"] },
       { action: "note", words: ["note", "notes", "comment", "observe", "observation", "log"] },
       { action: "form", words: ["form", "waxform", "type"] }
@@ -3064,6 +3134,8 @@ Outcome: Eliminated`;
       if (skiId) return { action: "runnerup", skiId };
       return null;
     }
+    if (detectedAction === "undo") return { action: "undo" };
+    if (detectedAction === "blind") return { action: "blind" };
     if (detectedAction && !["rate", "note", "form", "pair"].includes(detectedAction)) {
       if (skiId) return { action: detectedAction, skiId };
       return null;
@@ -3098,11 +3170,20 @@ Outcome: Eliminated`;
     }
     return null;
   }
-  function VoiceCommandBar({ skis, isGlide, onAdvance, onEliminate, onWinner, onRestore, onRate, onPair, onRunnerUp, onSnowTemp, onAirTemp, onNote, onForm }) {
+  function VoiceCommandBar({ skis, isGlide, onAdvance, onEliminate, onWinner, onRestore, onRate, onPair, onRunnerUp, onSnowTemp, onAirTemp, onNote, onForm, onUndo, onBlind }) {
     const [pending, setPending] = useState(null);
     const knownIds = (skis || []).map((s) => s.id);
-    const { listening, supported, start, stop } = useMic((transcript) => {
-      const cmd = parseVoiceCommand(transcript, knownIds);
+    const [parsing, setParsing] = useState(false);
+    const [usedFallback, setUsedFallback] = useState(false);
+    const { listening, supported, start, stop } = useMic(async (transcript) => {
+      setParsing(true);
+      setUsedFallback(false);
+      let cmd = await parseVoiceCommandAI(transcript, knownIds);
+      if (!cmd) {
+        cmd = parseVoiceCommand(transcript, knownIds);
+        setUsedFallback(true);
+      }
+      setParsing(false);
       if (cmd) setPending({ ...cmd, _raw: transcript });
       else setPending({ action: "unknown", raw: transcript });
     });
@@ -3124,6 +3205,8 @@ Outcome: Eliminated`;
       if (action === "temp" && kind === "air") onAirTemp?.(val);
       if (action === "note") onNote?.(skiId, text);
       if (action === "form") onForm?.(skiId, pending.form);
+      if (action === "undo") onUndo?.();
+      if (action === "blind") onBlind?.();
       setPending(null);
     }
     function describeCommand(cmd) {
@@ -3137,6 +3220,8 @@ Outcome: Eliminated`;
       if (cmd.action === "temp") return `Log ${cmd.kind} temp: ${cmd.val}\xB0`;
       if (cmd.action === "note") return `Note on ${cmd.skiId}: "${cmd.text}"`;
       if (cmd.action === "form") return `Set ${cmd.form} \xB7 ${cmd.skiId}`;
+      if (cmd.action === "undo") return "Undo last result";
+      if (cmd.action === "blind") return "Toggle blind mode reveal";
       if (cmd.action === "rate") {
         const parts = [];
         if (cmd.glide != null) parts.push(`glide ${cmd.glide}`);
@@ -3158,7 +3243,14 @@ Outcome: Eliminated`;
       display: "flex",
       alignItems: "center",
       gap: 6
-    } }, pending.action === "unknown" ? /* @__PURE__ */ React.createElement("span", { style: { color: "var(--amber)", fontSize: 15 } }, "!") : /* @__PURE__ */ React.createElement(MicIcon, { size: 14, color: "var(--blue)" }), describeCommand(pending)), pending.action !== "unknown" && pending._raw && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginBottom: 6, fontStyle: "italic" } }, 'heard: "', pending._raw, '"'), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, pending.action !== "unknown" && /* @__PURE__ */ React.createElement(
+    } }, pending.action === "unknown" ? /* @__PURE__ */ React.createElement("span", { style: { color: "var(--amber)", fontSize: 15 } }, "!") : /* @__PURE__ */ React.createElement(MicIcon, { size: 14, color: "var(--blue)" }), describeCommand(pending)), pending.action !== "unknown" && pending._raw && /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 10,
+      color: "var(--ink-faint)",
+      marginBottom: 6,
+      display: "flex",
+      alignItems: "center",
+      gap: 6
+    } }, /* @__PURE__ */ React.createElement("span", { style: { fontStyle: "italic" } }, 'heard: "', pending._raw, '"'), usedFallback && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--amber)", fontStyle: "normal" } }, "\xB7 offline mode")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, pending.action !== "unknown" && /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn",
@@ -3177,7 +3269,7 @@ Outcome: Eliminated`;
     ))), /* @__PURE__ */ React.createElement(
       "button",
       {
-        onClick: listening ? stop : start,
+        onClick: listening ? stop : parsing ? void 0 : start,
         className: listening ? "btn" : "btn-ghost",
         style: {
           width: "100%",
@@ -3187,19 +3279,20 @@ Outcome: Eliminated`;
           alignItems: "center",
           justifyContent: "center",
           gap: 8,
-          background: listening ? "var(--red)" : void 0,
-          color: listening ? "#fff" : void 0,
-          borderColor: listening ? "var(--red)" : void 0
+          background: listening ? "var(--red)" : parsing ? "var(--paper-3)" : void 0,
+          color: listening ? "#fff" : parsing ? "var(--ink-faint)" : void 0,
+          borderColor: listening ? "var(--red)" : void 0,
+          cursor: parsing ? "default" : void 0
         }
       },
-      listening ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(StopIcon, { size: 14, color: "#fff" }), " Listening \u2014 tap to stop") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(MicIcon, { size: 16 }), " Voice Command")
+      listening ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(StopIcon, { size: 14, color: "#fff" }), " Listening \u2014 tap to stop") : parsing ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13 } }, "\u23F3"), " Parsing\u2026") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(MicIcon, { size: 16 }), " Voice Command")
     ), !listening && !pending && /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 11,
       color: "var(--ink-faint)",
       textAlign: "center",
       marginTop: 6,
       lineHeight: 1.7
-    } }, /* @__PURE__ */ React.createElement("div", null, '"Advance A1" \xB7 "Eliminate B2" \xB7 "Winner C1"'), /* @__PURE__ */ React.createElement("div", null, '"Pair A1 B2" \xB7 "Advance A1" \xB7 "Eliminate B2"'), /* @__PURE__ */ React.createElement("div", null, '"Rate A1 glide 8 kick 4" \xB7 "A1 glide seven"'), /* @__PURE__ */ React.createElement("div", null, '"Snow temp 28" \xB7 "Air temp negative 3"'), /* @__PURE__ */ React.createElement("div", null, '"Note A1 felt slow in the tracks"'), /* @__PURE__ */ React.createElement("div", null, '"Block A1" \xB7 "Klister B2" \xB7 "Liquid C1" \xB7 "Hard A2"'), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 3, color: "var(--rule)" } }, "keep/drop/pass \xB7 compare \xB7 versus \xB7 ay-one")));
+    } }, /* @__PURE__ */ React.createElement("div", null, '"Advance A1" \xB7 "Eliminate B2" \xB7 "Winner C1"'), /* @__PURE__ */ React.createElement("div", null, '"Pair A1 B2" \xB7 "Restore B2" \xB7 "Runner-up A1"'), /* @__PURE__ */ React.createElement("div", null, '"Rate A1 glide 8" \xB7 "A1 kick 6 glide 9"'), /* @__PURE__ */ React.createElement("div", null, '"Snow temp 28" \xB7 "Air temp negative 3"'), /* @__PURE__ */ React.createElement("div", null, '"Note A1 felt slow" \xB7 "Block A1" \xB7 "Klister B2"'), /* @__PURE__ */ React.createElement("div", null, '"Undo" \xB7 "Reveal"'), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 3, color: "var(--rule)" } }, "AI-powered \xB7 any natural phrasing \xB7 phonetic alphabet")));
   }
   function FleetSkiRow({ ski, onChange, onDelete }) {
     return /* @__PURE__ */ React.createElement("div", { style: {
@@ -4400,7 +4493,7 @@ Outcome: Eliminated`;
         onClick: () => setExpanded((v) => !v),
         title: expanded ? "Hide temp buttons" : "Log snow / air temp"
       },
-      expanded ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, color: hasData ? "#fff" : "var(--ink-mid)" } }, "\xD7") : /* @__PURE__ */ React.createElement("span", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 1 } }, /* @__PURE__ */ React.createElement(SnowIcon, { size: 14, color: hasData ? "#fff" : "var(--blue)" }), (lastSnow || lastAir) && /* @__PURE__ */ React.createElement("span", { style: {
+      expanded ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, color: hasData ? "#fff" : "var(--ink-mid)" } }, "\xD7") : /* @__PURE__ */ React.createElement("span", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 1 } }, /* @__PURE__ */ React.createElement(ThermIcon, { size: 16, color: hasData ? "#fff" : "var(--ink-mid)" }), (lastSnow || lastAir) && /* @__PURE__ */ React.createElement("span", { style: {
         fontSize: 9,
         fontWeight: 700,
         lineHeight: 1,
@@ -7056,7 +7149,7 @@ Outcome: Eliminated`;
       return this.props.children;
     }
   };
-  function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], eventForecast = null, onUpdateEventForecast }) {
+  function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], eventForecast = null, onUpdateEventForecast, onRequestCopy }) {
     const [tab, setTab] = useState(test.category === "glide-out" || test.type === "Glide Out" ? "glideout" : "tournament");
     const [undoStack, setUndoStack] = useState([]);
     const [undoVisible, setUndoVisible] = useState(false);
@@ -7366,7 +7459,16 @@ Outcome: Eliminated`;
       color: "var(--ink-faint)",
       letterSpacing: "0.06em",
       textTransform: "uppercase"
-    } }, test.category === "glide-out" ? "Glide Out" : test.category, test.type ? ` \xB7 ${test.type}` : ""), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, test.name), !!test.testers?.length && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, test.testers)), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 12, color: "var(--ink-faint)" } }, activeSki.length, " active")), showDeadlinePicker && /* @__PURE__ */ React.createElement(
+    } }, test.category === "glide-out" ? "Glide Out" : test.category, test.type ? ` \xB7 ${test.type}` : ""), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, test.name), !!test.testers?.length && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, test.testers)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 12, color: "var(--ink-faint)" } }, activeSki.length, " active"), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: "btn-ghost no-print",
+        title: "Copy this test to another session",
+        onClick: onRequestCopy,
+        style: { fontSize: 11, padding: "4px 10px", minHeight: 28 }
+      },
+      "Copy\u2026"
+    ))), showDeadlinePicker && /* @__PURE__ */ React.createElement(
       DeadlinePicker,
       {
         test,
@@ -7381,7 +7483,69 @@ Outcome: Eliminated`;
         onClick: () => setTab(t.id)
       },
       t.label
-    ))), /* @__PURE__ */ React.createElement("div", { style: { padding: 16, paddingBottom: 80 } }, tab === "tournament" && /* @__PURE__ */ React.createElement("div", null, test.blindMode && /* @__PURE__ */ React.createElement("div", { style: {
+    ))), /* @__PURE__ */ React.createElement("div", { style: { padding: 16, paddingBottom: 80 } }, /* @__PURE__ */ React.createElement(
+      VoiceCommandBar,
+      {
+        skis: test.skis,
+        isGlide,
+        onAdvance: !winner ? ((id) => {
+          const s = activeSki.find((x) => x.id === id);
+          if (!s) return;
+          if (!currentPair && activeSki.length === 2) {
+            const other = activeSki.find((x) => x.id !== id);
+            if (other) selectPair([id, other.id]);
+          }
+          advance(id);
+        }) : null,
+        onEliminate: !winner ? ((id) => {
+          const s = activeSki.find((x) => x.id === id);
+          if (!s) return;
+          if (!currentPair && activeSki.length === 2) {
+            const other = activeSki.find((x) => x.id !== id);
+            if (other) selectPair([id, other.id]);
+          }
+          eliminate(id);
+        }) : null,
+        onWinner: !winner ? ((id) => declareWinner(id)) : null,
+        onRestore: (id) => restore(id),
+        onRate: (id, { glide, kick }) => {
+          const ski = (test.skis || []).find((x) => x.id === id);
+          if (!ski) return;
+          const r = { ...ski.ratings || {} };
+          if (glide != null) r.glide = glide;
+          if (kick != null) r.kick = kick;
+          updateRating(id, r);
+        },
+        onPair: (id1, id2) => {
+          const s1 = activeSki.find((s) => s.id === id1);
+          const s2 = activeSki.find((s) => s.id === id2);
+          if (s1 && s2) selectPair([id1, id2]);
+        },
+        onRunnerUp: (id) => markRunnerUp(id),
+        onSnowTemp: (val) => {
+          const f = useCelsius ? val * 9 / 5 + 32 : val;
+          upd({ snowTemps: [...test.snowTemps || [], { ts: nowStr(), tempF: f }] });
+        },
+        onAirTemp: (val) => {
+          const f = useCelsius ? val * 9 / 5 + 32 : val;
+          upd({ airTemps: [...test.airTemps || [], { ts: nowStr(), tempF: f }] });
+        },
+        onNote: (id, text) => {
+          const ski = (test.skis || []).find((x) => x.id === id);
+          if (!ski) return;
+          const prev = ski.feelNotes || "";
+          updSki(id, { feelNotes: prev ? prev + " \xB7 " + text : text });
+        },
+        onForm: (id, form) => {
+          const ski = (test.skis || []).find((x) => x.id === id);
+          if (!ski) return;
+          updSki(id, { waxForm: form });
+          if (ski.product) rememberProductForm(ski.product, form);
+        },
+        onUndo: undoStack.length > 0 ? doUndo : null,
+        onBlind: test.blindMode ? () => upd({ blindRevealed: !test.blindRevealed }) : null
+      }
+    ), tab === "tournament" && /* @__PURE__ */ React.createElement("div", null, test.blindMode && /* @__PURE__ */ React.createElement("div", { style: {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
@@ -7652,67 +7816,7 @@ Outcome: Eliminated`;
         marginBottom: 12,
         border: "1.5px solid var(--amber)"
       } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--amber)", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement(EliminateIcon, { size: 12, color: "var(--amber)" }), "Rating inconsistency")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-mid)", lineHeight: 1.5 } }, conflicted.map((s) => /* @__PURE__ */ React.createElement("span", { key: s.id }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, s.id), " was eliminated but rated", " ", /* @__PURE__ */ React.createElement("strong", null, getComp2(s), "/", max), " vs winner", " ", /* @__PURE__ */ React.createElement("span", { className: "mono" }, winner.id), " ", /* @__PURE__ */ React.createElement("strong", null, getComp2(winner), "/", max), ".", " ")), "Consider re-testing.")));
-    })(), /* @__PURE__ */ React.createElement(
-      VoiceCommandBar,
-      {
-        skis: test.skis,
-        isGlide,
-        onAdvance: !winner ? ((id) => {
-          const s = activeSki.find((x) => x.id === id);
-          if (!s) return;
-          if (!currentPair && activeSki.length === 2) {
-            const other = activeSki.find((x) => x.id !== id);
-            if (other) selectPair([id, other.id]);
-          }
-          advance(id);
-        }) : null,
-        onEliminate: !winner ? ((id) => {
-          const s = activeSki.find((x) => x.id === id);
-          if (!s) return;
-          if (!currentPair && activeSki.length === 2) {
-            const other = activeSki.find((x) => x.id !== id);
-            if (other) selectPair([id, other.id]);
-          }
-          eliminate(id);
-        }) : null,
-        onWinner: !winner ? ((id) => declareWinner(id)) : null,
-        onRestore: (id) => restore(id),
-        onRate: (id, { glide, kick }) => {
-          const ski = (test.skis || []).find((x) => x.id === id);
-          if (!ski) return;
-          const r = { ...ski.ratings || {} };
-          if (glide != null) r.glide = glide;
-          if (kick != null) r.kick = kick;
-          updateRating(id, r);
-        },
-        onPair: (id1, id2) => {
-          const s1 = activeSki.find((s) => s.id === id1);
-          const s2 = activeSki.find((s) => s.id === id2);
-          if (s1 && s2) selectPair([id1, id2]);
-        },
-        onRunnerUp: (id) => markRunnerUp(id),
-        onSnowTemp: (val) => {
-          const f = useCelsius ? val * 9 / 5 + 32 : val;
-          upd({ snowTemps: [...test.snowTemps || [], { ts: nowStr(), tempF: f }] });
-        },
-        onAirTemp: (val) => {
-          const f = useCelsius ? val * 9 / 5 + 32 : val;
-          upd({ airTemps: [...test.airTemps || [], { ts: nowStr(), tempF: f }] });
-        },
-        onNote: (id, text) => {
-          const ski = (test.skis || []).find((x) => x.id === id);
-          if (!ski) return;
-          const prev = ski.feelNotes || "";
-          updSki(id, { feelNotes: prev ? prev + " \xB7 " + text : text });
-        },
-        onForm: (id, form) => {
-          const ski = (test.skis || []).find((x) => x.id === id);
-          if (!ski) return;
-          updSki(id, { waxForm: form });
-          if (ski.product) rememberProductForm(ski.product, form);
-        }
-      }
-    ), roundState && !winner && activeSki.length >= 1 && (() => {
+    })(), roundState && !winner && activeSki.length >= 1 && (() => {
       const rs = roundState;
       const totalAlive = rs.aliveNow.length;
       const pairedCount = [...rs.pairedThisRound].filter((id) => rs.aliveNow.includes(id)).length / 2;
@@ -8745,19 +8849,7 @@ Outcome: Eliminated`;
         rows: 5,
         mic: true
       }
-    ))), (tab === "tournament" || tab === "glideout") && /* @__PURE__ */ React.createElement(
-      TempFABGroup,
-      {
-        snowReadings: test.snowTemps || [],
-        onAddSnow: (r) => upd({ snowTemps: [...test.snowTemps || [], r] }),
-        onDeleteSnow: (i) => upd({ snowTemps: (test.snowTemps || []).filter((_, idx) => idx !== i) }),
-        airReadings: test.airTemps || [],
-        onAddAir: (r) => upd({ airTemps: [...test.airTemps || [], r] }),
-        onDeleteAir: (i) => upd({ airTemps: (test.airTemps || []).filter((_, idx) => idx !== i) }),
-        useCelsius,
-        onUnitToggle
-      }
-    ), undoVisible && undoStack.length > 0 && /* @__PURE__ */ React.createElement(
+    ))), undoVisible && undoStack.length > 0 && /* @__PURE__ */ React.createElement(
       UndoToast,
       {
         message: undoStack[0].label,
@@ -8905,7 +8997,7 @@ Outcome: Eliminated`;
       }
     ));
   }
-  function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], allEvents = [], onPromoteEventWeather, activeTestId, onSetActiveTest, eventForecast = null, onUpdateEventForecast, eventSessions = [] }) {
+  function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], allEvents = [], onPromoteEventWeather, activeTestId, onSetActiveTest, eventForecast = null, onUpdateEventForecast, eventSessions = [], onCopyTestToSession }) {
     const [tab, setTab] = useState("tests");
     const setActiveTestId = onSetActiveTest || (() => {
     });
@@ -8916,6 +9008,7 @@ Outcome: Eliminated`;
     const [copyTestMode, setCopyTestMode] = useState(false);
     const [populatingTestId, setPopulatingTestId] = useState(null);
     const [deadlinePickerTest, setDeadlinePickerTest] = useState(null);
+    const [copyingTest, setCopyingTest] = useState(null);
     function upd(patch) {
       onUpdate({ ...session, ...patch });
     }
@@ -8944,7 +9037,8 @@ Outcome: Eliminated`;
           eventId,
           fleets,
           eventForecast,
-          onUpdateEventForecast
+          onUpdateEventForecast,
+          onRequestCopy: () => setCopyingTest(test)
         }
       ));
     }
@@ -8973,6 +9067,21 @@ Outcome: Eliminated`;
         test: deadlinePickerTest,
         onSave: (patch) => updateTest({ ...deadlinePickerTest, ...patch }),
         onClose: () => setDeadlinePickerTest(null)
+      }
+    ), copyingTest && /* @__PURE__ */ React.createElement(
+      CopyTestModal,
+      {
+        test: copyingTest,
+        eventSessions,
+        currentSessionId: session.id,
+        onCopy: (destSessionId, copiedTest) => {
+          if (destSessionId === session.id) {
+            upd({ tests: [...session.tests || [], copiedTest] });
+          } else {
+            onCopyTestToSession?.(destSessionId, copiedTest);
+          }
+        },
+        onClose: () => setCopyingTest(null)
       }
     ), /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", textTransform: "uppercase", letterSpacing: "0.06em" } }, "Session"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, session.name)), /* @__PURE__ */ React.createElement(SessionTimer, { startedAt: session.startedAt || session.createdAt })), /* @__PURE__ */ React.createElement("div", { className: "tab-bar" }, TABS.map((t) => /* @__PURE__ */ React.createElement(
       "button",
@@ -9056,10 +9165,10 @@ Outcome: Eliminated`;
       ), /* @__PURE__ */ React.createElement(
         "button",
         {
-          title: "Duplicate test (copies fleet setup, clears results)",
-          onClick: () => {
-            const copy = copyTest(test);
-            upd({ tests: [...session.tests || [], copy] });
+          title: "Copy test to any session",
+          onClick: (e) => {
+            e.stopPropagation();
+            setCopyingTest(test);
           },
           className: "btn-ghost",
           style: { fontSize: 12, padding: "6px 10px", minHeight: 34 }
@@ -9373,7 +9482,13 @@ Outcome: Eliminated`;
           onPromoteEventWeather: (w) => onUpdate({ ...event, weather: { ...event.weather, ...w } }),
           eventForecast: event.forecast || null,
           onUpdateEventForecast: (fc) => onUpdate({ ...event, forecast: fc }),
-          eventSessions: event.sessions || []
+          eventSessions: event.sessions || [],
+          onCopyTestToSession: (destSessionId, copiedTest) => {
+            const updatedSessions = (event.sessions || []).map(
+              (s) => s.id === destSessionId ? { ...s, tests: [...s.tests || [], copiedTest] } : s
+            );
+            onUpdate({ ...event, sessions: updatedSessions });
+          }
         }
       );
     }
@@ -10356,8 +10471,47 @@ Outcome: Eliminated`;
         onFleets: () => setView("fleets")
       }
     );
+    const eventTempFab = view === "event" && activeEvent ? (() => {
+      const sess = activeSessionId ? (activeEvent.sessions || []).find((s) => s.id === activeSessionId) : null;
+      const test = sess && activeTestId ? (sess.tests || []).find((t) => t.id === activeTestId) : null;
+      const snowReadings = test ? test.snowTemps || [] : sess ? sess.snowTemps || [] : activeEvent.snowTemps || [];
+      const airReadings = test ? test.airTemps || [] : sess ? sess.airTemps || [] : activeEvent.airTemps || [];
+      const onAddSnow = (r) => {
+        if (test) updateEvent({ ...activeEvent, sessions: (activeEvent.sessions || []).map((s) => s.id === sess.id ? { ...s, tests: (s.tests || []).map((t) => t.id === test.id ? { ...t, snowTemps: [...t.snowTemps || [], r] } : t) } : s) });
+        else if (sess) updateEvent({ ...activeEvent, sessions: (activeEvent.sessions || []).map((s) => s.id === sess.id ? { ...s, snowTemps: [...s.snowTemps || [], r] } : s) });
+        else updateEvent({ ...activeEvent, snowTemps: [...activeEvent.snowTemps || [], r] });
+      };
+      const onDeleteSnow = (i) => {
+        if (test) updateEvent({ ...activeEvent, sessions: (activeEvent.sessions || []).map((s) => s.id === sess.id ? { ...s, tests: (s.tests || []).map((t) => t.id === test.id ? { ...t, snowTemps: (t.snowTemps || []).filter((_, idx) => idx !== i) } : t) } : s) });
+        else if (sess) updateEvent({ ...activeEvent, sessions: (activeEvent.sessions || []).map((s) => s.id === sess.id ? { ...s, snowTemps: (s.snowTemps || []).filter((_, idx) => idx !== i) } : s) });
+        else updateEvent({ ...activeEvent, snowTemps: (activeEvent.snowTemps || []).filter((_, idx) => idx !== i) });
+      };
+      const onAddAir = (r) => {
+        if (test) updateEvent({ ...activeEvent, sessions: (activeEvent.sessions || []).map((s) => s.id === sess.id ? { ...s, tests: (s.tests || []).map((t) => t.id === test.id ? { ...t, airTemps: [...t.airTemps || [], r] } : t) } : s) });
+        else if (sess) updateEvent({ ...activeEvent, sessions: (activeEvent.sessions || []).map((s) => s.id === sess.id ? { ...s, airTemps: [...s.airTemps || [], r] } : s) });
+        else updateEvent({ ...activeEvent, airTemps: [...activeEvent.airTemps || [], r] });
+      };
+      const onDeleteAir = (i) => {
+        if (test) updateEvent({ ...activeEvent, sessions: (activeEvent.sessions || []).map((s) => s.id === sess.id ? { ...s, tests: (s.tests || []).map((t) => t.id === test.id ? { ...t, airTemps: (t.airTemps || []).filter((_, idx) => idx !== i) } : t) } : s) });
+        else if (sess) updateEvent({ ...activeEvent, sessions: (activeEvent.sessions || []).map((s) => s.id === sess.id ? { ...s, airTemps: (s.airTemps || []).filter((_, idx) => idx !== i) } : s) });
+        else updateEvent({ ...activeEvent, airTemps: (activeEvent.airTemps || []).filter((_, idx) => idx !== i) });
+      };
+      return /* @__PURE__ */ React.createElement(
+        TempFABGroup,
+        {
+          snowReadings,
+          onAddSnow,
+          onDeleteSnow,
+          airReadings,
+          onAddAir,
+          onDeleteAir,
+          useCelsius,
+          onUnitToggle: toggleUnit
+        }
+      );
+    })() : null;
     function wrap(content) {
-      return /* @__PURE__ */ React.createElement("div", null, showOnboard && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowOnboard(false) }), !online && /* @__PURE__ */ React.createElement("div", { className: "offline-bar" }, "\u26A0 Offline \u2014 changes saved locally"), bar, content);
+      return /* @__PURE__ */ React.createElement("div", null, showOnboard && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowOnboard(false) }), !online && /* @__PURE__ */ React.createElement("div", { className: "offline-bar" }, "\u26A0 Offline \u2014 changes saved locally"), bar, content, eventTempFab);
     }
     if (view === "event" && activeEvent)
       return wrap(/* @__PURE__ */ React.createElement(
