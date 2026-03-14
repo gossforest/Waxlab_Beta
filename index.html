@@ -426,10 +426,6 @@ var AppBundle = (() => {
         }
         dequeueWrite(stamped.id);
         return true;
-      }).catch((e) => {
-        console.warn("saveEvent bg:", e.message);
-        queueWrite(teamCode, stamped);
-        return false;
       });
     }
     return Promise.resolve(true);
@@ -528,7 +524,9 @@ var AppBundle = (() => {
       db.from("waxlab_vocab").select("terms").eq("team_code", teamCode).eq("category", category).single().then(({ data }) => {
         const merged = [.../* @__PURE__ */ new Set([...data?.terms || [], ...vocab[category]])].sort();
         return db.from("waxlab_vocab").upsert({ team_code: teamCode, category, terms: merged }, { onConflict: "team_code,category" });
-      }).catch((e) => console.warn("addVocabTerms bg:", e.message));
+      }).then(({ error }) => {
+        if (error) console.warn("addVocabTerms bg:", error.message);
+      });
     }
   }
   async function loadCatalog(teamCode) {
@@ -540,7 +538,9 @@ var AppBundle = (() => {
       db.from("waxlab_catalog").upsert(
         { team_code: teamCode, data: entries, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
         { onConflict: "team_code" }
-      ).catch((e) => console.warn("saveCatalog bg:", e.message));
+      ).then(({ error }) => {
+        if (error) console.warn("saveCatalog bg:", error.message);
+      });
     }
   }
   async function bgSyncCatalog(teamCode, setCatalog) {
@@ -1816,10 +1816,16 @@ Outcome: Eliminated`;
   async function saveFleets(teamCode, fleets) {
     lsSet(`waxlab:fleets:${teamCode}`, fleets);
     if (db) {
-      db.from("waxlab_fleets").upsert(
-        { team_code: teamCode, data: fleets },
-        { onConflict: "team_code" }
-      ).catch((e) => console.warn("saveFleets bg:", e.message));
+      (async () => {
+        try {
+          await db.from("waxlab_fleets").upsert(
+            { team_code: teamCode, data: fleets },
+            { onConflict: "team_code" }
+          );
+        } catch (e) {
+          console.warn("saveFleets bg:", e.message);
+        }
+      })();
     }
   }
   async function geocodePlaceMulti(name) {
@@ -10224,7 +10230,9 @@ Outcome: Eliminated`;
       if (db) {
         db.from("waxlab_events").delete().eq("id", id).then(({ error }) => {
           if (error) queueDelete(teamCode, id);
-        }).catch(() => queueDelete(teamCode, id));
+        }).then(({ error }) => {
+          if (error) queueDelete(teamCode, id);
+        });
       } else {
         queueDelete(teamCode, id);
       }
