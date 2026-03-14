@@ -3246,24 +3246,10 @@ Outcome: Eliminated`;
   }
   function FleetCard({ fleet, onChange, onDelete }) {
     const [expanded, setExpanded] = useState(true);
-    const [quickAdd, setQuickAdd] = useState("");
+    const [qaCount, setQaCount] = useState("8");
+    const [qaIdStart, setQaIdStart] = useState("");
+    const [qaDesc, setQaDesc] = useState("");
     const [quickErr, setQuickErr] = useState("");
-    function parseQuickAdd(text) {
-      const t = text.toLowerCase().trim();
-      const countMatch = t.match(/^(\d+)/);
-      const count = countMatch ? Math.min(parseInt(countMatch[1]), 30) : 1;
-      const idStartMatch = t.match(/(?:ids?\s+(?:starting\s+)?(?:from|at)|starting\s+(?:from|at)|start(?:ing)?\s+(?:from|at)?)\s*([a-z0-9]+)/i) || t.match(/\bfrom\s+([a-z0-9]+(?:[a-z]|\d)+)\b/i);
-      const idStart = idStartMatch ? idStartMatch[1].toUpperCase() : null;
-      const grindKwMatch = t.match(/(?:grind|with)\s+([a-z0-9][a-z0-9+\-]*\+?)/i);
-      const grindBareMatch = t.match(/(?<![a-z0-9])([a-z]{1,3}\d[a-z0-9+\-]*\+?)(?![a-z0-9])/i);
-      const grind = grindKwMatch || grindBareMatch ? (grindKwMatch || grindBareMatch)[1].toUpperCase() : "";
-      const flexMatch = t.match(/\bflex\s+(\d+)/i);
-      const flex = flexMatch ? flexMatch[1] : "";
-      const rem = t.replace(/^\d+\s*/, "").replace(/\bids?\s+(?:starting\s+)?(?:from|at)\s+[a-z0-9]+/ig, "").replace(/\bstart(?:ing)?\s+(?:from|at)?\s*[a-z0-9]+/ig, "").replace(/\bflex\s+\d+\b/ig, "").replace(/\b(?:with|grind)\s+[a-z0-9][a-z0-9+\-]*\+?\b/ig, "").replace(/\b[a-z]{1,3}\d[a-z0-9+\-]*\+?\b/ig, "").replace(/\b(pairs?|skis?|of|and|the|with|ski|,)\b/ig, "").trim();
-      const makeWord = rem.match(/\b([a-z]{3,})\b/i);
-      const make = makeWord ? makeWord[1].replace(/^./, (c) => c.toUpperCase()) : "";
-      return { count, make, grind, flex, idStart };
-    }
     function generateIdSequence(startId, count, lettersPerNum = 26) {
       const pairMatch = startId.match(/^(\d+)([A-Z])$/i);
       if (pairMatch) {
@@ -3298,17 +3284,15 @@ Outcome: Eliminated`;
     }
     function applyQuickAdd() {
       setQuickErr("");
-      const txt = quickAdd.trim();
-      if (!txt) return;
-      const { count, make, grind, flex, idStart } = parseQuickAdd(txt);
-      if (count < 1) {
-        setQuickErr("Couldn't parse a count \u2014 try: 8 Fischers with PL2+");
+      const count = Math.min(Math.max(parseInt(qaCount) || 0, 1), 50);
+      if (!count) {
+        setQuickErr("Enter a number of skis to add.");
         return;
       }
-      const isPairs = /\bpairs?\b/i.test(txt);
       let ids;
+      const idStart = qaIdStart.trim().toUpperCase();
       if (idStart) {
-        ids = generateIdSequence(idStart, count, isPairs ? 2 : 26);
+        ids = generateIdSequence(idStart, count);
       } else {
         const existingIds = fleet.skis.map((s) => s.id).filter(Boolean);
         let prefix = "S";
@@ -3326,17 +3310,20 @@ Outcome: Eliminated`;
           });
           nextNum = Math.max(...nums) + 1;
         }
-        ids = generateIdSequence(prefix + nextNum, count, isPairs ? 2 : 26);
+        ids = generateIdSequence(prefix + nextNum, count);
       }
+      const desc = qaDesc.trim();
       const newSkis = ids.map((id) => ({
         id,
-        make: make || "",
-        flex: flex || "",
-        grind: grind || "",
+        make: desc,
+        flex: "",
+        grind: "",
         notes: ""
       }));
       onChange({ ...fleet, skis: [...fleet.skis, ...newSkis] });
-      setQuickAdd("");
+      setQaCount("8");
+      setQaIdStart("");
+      setQaDesc("");
     }
     function updSki(idx, patch) {
       const skis = fleet.skis.map((s, i) => i === idx ? patch : s);
@@ -3414,20 +3401,47 @@ Outcome: Eliminated`;
         rows: 2,
         style: { marginTop: 4, marginBottom: 8 }
       }
-    ), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Quick Add"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Quick Add"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 2, width: 64 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)", textTransform: "uppercase", letterSpacing: "0.05em" } }, "Count"), /* @__PURE__ */ React.createElement(
       "input",
       {
         className: "inp",
-        value: quickAdd,
+        type: "number",
+        min: 1,
+        max: 50,
+        value: qaCount,
         onChange: (e) => {
-          setQuickAdd(e.target.value);
+          setQaCount(e.target.value);
+          setQuickErr("");
+        },
+        style: { fontSize: 13, padding: "8px 8px", textAlign: "center" }
+      }
+    )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 2, width: 80 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)", textTransform: "uppercase", letterSpacing: "0.05em" } }, "First ID"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "inp",
+        value: qaIdStart,
+        onChange: (e) => {
+          setQaIdStart(e.target.value);
           setQuickErr("");
         },
         onKeyDown: (e) => e.key === "Enter" && applyQuickAdd(),
-        placeholder: "e.g. 8 Fischers IDs from 11a  \xB7  6 Salomon flex 52 with PL2+",
-        style: { flex: 1, fontSize: 13, padding: "8px 10px" }
+        placeholder: "e.g. 11a",
+        style: { fontSize: 13, padding: "8px 8px" }
       }
-    ), /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 2, flex: 1 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)", textTransform: "uppercase", letterSpacing: "0.05em" } }, "Description"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "inp",
+        value: qaDesc,
+        onChange: (e) => {
+          setQaDesc(e.target.value);
+          setQuickErr("");
+        },
+        onKeyDown: (e) => e.key === "Enter" && applyQuickAdd(),
+        placeholder: "Fischer, flex 47\u2026",
+        style: { fontSize: 13, padding: "8px 10px" }
+      }
+    )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "transparent" } }, "."), /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn-ghost",
@@ -3435,7 +3449,14 @@ Outcome: Eliminated`;
         style: { fontSize: 13, padding: "8px 14px", whiteSpace: "nowrap" }
       },
       "Add"
-    )), quickErr && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--red)", marginTop: 4 } }, quickErr), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 4, lineHeight: 1.5 } }, 'Count \xB7 Brand \xB7 "with [grind]" \xB7 "flex [num]" \u2014 any order, any subset')), /* @__PURE__ */ React.createElement(
+    ))), quickErr && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--red)", marginTop: 4 } }, quickErr), (() => {
+      const previewCount = Math.min(Math.max(parseInt(qaCount) || 0, 1), 50);
+      const idStart = qaIdStart.trim().toUpperCase();
+      if (!idStart) return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 4, lineHeight: 1.6 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--ink-mid)" } }, "11a"), " \u2192 11a, 11b, 12a, 12b\u2026", "  ", /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--ink-mid)" } }, "S1"), " \u2192 S1, S2, S3\u2026", "  ", /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--ink-mid)" } }, "7"), " \u2192 7, 8, 9\u2026", "  ", /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--ink-mid)" } }, "F"), " \u2192 F1, F2, F3\u2026");
+      const preview = generateIdSequence(idStart, Math.min(previewCount, 6));
+      const suffix = previewCount > 6 ? ` \u2026 ${generateIdSequence(idStart, previewCount).slice(-1)[0]}` : "";
+      return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, marginTop: 4, lineHeight: 1.6 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, "IDs: "), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--blue)", fontWeight: 600 } }, preview.join(", "), suffix), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, " (", previewCount, " skis)"));
+    })()), /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn-ghost",
