@@ -6991,7 +6991,8 @@ Outcome: Eliminated`;
     const [rewaxApp, setRewaxApp] = useState("");
     const [rewaxForm, setRewaxForm] = useState("");
     const isGlide = test.category === "glide" || test.category === "glide-out";
-    const activeSki = (test.skis || []).filter((s) => s.standing === "Active");
+    const skiSort = (a, b) => a.id.localeCompare(b.id, void 0, { numeric: true, sensitivity: "base" });
+    const activeSki = (test.skis || []).filter((s) => s.standing === "Active").sort(skiSort);
     const eliminated = (test.skis || []).filter((s) => s.standing === "Eliminated" || s.standing === "Tied");
     const winner = (test.skis || []).find((s) => s.standing === "Winner");
     const tied = (test.skis || []).filter((s) => s.standing === "Tied");
@@ -7829,9 +7830,10 @@ Outcome: Eliminated`;
     })(), (() => {
       const rs = roundState;
       const allSkis = test.skis || [];
+      const skiSort2 = (a, b) => a.id.localeCompare(b.id, void 0, { numeric: true, sensitivity: "base" });
       const testedIds = rs ? rs.pairedThisRound : /* @__PURE__ */ new Set();
-      const elimSkis = allSkis.filter((s) => s.standing === "Eliminated");
-      const tiedSkis = allSkis.filter((s) => s.standing === "Tied");
+      const elimSkis = allSkis.filter((s) => s.standing === "Eliminated").sort(skiSort2);
+      const tiedSkis = allSkis.filter((s) => s.standing === "Tied").sort(skiSort2);
       const lastRoundFor = (id) => {
         const rounds = test.rounds || [];
         for (let i = rounds.length - 1; i >= 0; i--) {
