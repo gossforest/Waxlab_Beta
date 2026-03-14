@@ -235,7 +235,6 @@ var AppBundle = (() => {
         airTemps: [],
         ...s,
         tests: (s.tests || []).map((t) => ({
-          skis: [],
           snowTemps: [],
           airTemps: [],
           glideOutRuns: [],
@@ -8997,6 +8996,112 @@ Rules:
       }
     ));
   }
+  function CopyTestModal({ test, eventSessions = [], currentSessionId, onCopy, onClose }) {
+    const [destSessionId, setDestSessionId] = useState(currentSessionId);
+    const [mode, setMode] = useState("fleet");
+    const [name, setName] = useState((test.name || "") + " (copy)");
+    function doConfirm() {
+      const dest = eventSessions.find((s) => s.id === destSessionId);
+      if (!dest) return;
+      const copied = mode === "full" ? {
+        ...test,
+        id: uid(),
+        name: name.trim() || (test.name || "") + " (copy)",
+        createdAt: nowStr(),
+        completedAt: void 0
+      } : { ...copyTest(test, ""), name: name.trim() || (test.name || "") + " (copy)" };
+      onCopy(dest.id, copied);
+      onClose();
+    }
+    return /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        style: {
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.5)",
+          zIndex: 600,
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "center"
+        },
+        onClick: (e) => {
+          if (e.target === e.currentTarget) onClose();
+        }
+      },
+      /* @__PURE__ */ React.createElement("div", { style: {
+        background: "var(--paper)",
+        width: "100%",
+        maxWidth: 480,
+        borderRadius: "16px 16px 0 0",
+        padding: "20px 20px 36px"
+      } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, fontWeight: 700 } }, "Copy Test"), /* @__PURE__ */ React.createElement("button", { onClick: onClose, className: "btn-text", style: { fontSize: 22 } }, "\xD7")), /* @__PURE__ */ React.createElement(Lbl, null, "Test name"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          className: "inp",
+          value: name,
+          onChange: (e) => setName(e.target.value),
+          style: { marginBottom: 14 },
+          placeholder: (test.name || "") + " (copy)"
+        }
+      ), /* @__PURE__ */ React.createElement(Lbl, null, "Destination session"), /* @__PURE__ */ React.createElement("div", { style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        marginBottom: 14,
+        maxHeight: 180,
+        overflowY: "auto",
+        background: "var(--paper-3)",
+        borderRadius: 8,
+        border: "1px solid var(--rule)",
+        padding: 4
+      } }, eventSessions.map((s) => /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          key: s.id,
+          onClick: () => setDestSessionId(s.id),
+          style: {
+            textAlign: "left",
+            padding: "9px 12px",
+            borderRadius: 6,
+            border: "none",
+            background: destSessionId === s.id ? "var(--blue)" : "transparent",
+            color: destSessionId === s.id ? "#fff" : "var(--ink)",
+            cursor: "pointer",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center"
+          }
+        },
+        /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600, fontSize: 13 } }, s.name),
+        /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, opacity: 0.7 } }, s.id === currentSessionId ? "current \xB7 " : "", (s.tests || []).length, " test", (s.tests || []).length !== 1 ? "s" : "")
+      ))), /* @__PURE__ */ React.createElement(Lbl, null, "What to copy"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 20 } }, [
+        { value: "fleet", label: "Fleet only", sub: "Skis & products, results cleared" },
+        { value: "full", label: "Full copy", sub: "Includes all results & rounds" }
+      ].map((opt) => /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          key: opt.value,
+          onClick: () => setMode(opt.value),
+          style: {
+            flex: 1,
+            padding: "10px 12px",
+            borderRadius: 8,
+            cursor: "pointer",
+            border: mode === opt.value ? "2px solid var(--blue)" : "1.5px solid var(--rule)",
+            background: mode === opt.value ? "rgba(0,122,255,0.07)" : "var(--paper-2)",
+            textAlign: "left"
+          }
+        },
+        /* @__PURE__ */ React.createElement("div", { style: {
+          fontWeight: 600,
+          fontSize: 13,
+          color: mode === opt.value ? "var(--blue)" : "var(--ink)"
+        } }, opt.label),
+        /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 2 } }, opt.sub)
+      ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: doConfirm }, "Copy \u2192"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: onClose }, "Cancel")))
+    );
+  }
   function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], allEvents = [], onPromoteEventWeather, activeTestId, onSetActiveTest, eventForecast = null, onUpdateEventForecast, eventSessions = [], onCopyTestToSession }) {
     const [tab, setTab] = useState("tests");
     const setActiveTestId = onSetActiveTest || (() => {
@@ -9044,7 +9149,7 @@ Rules:
     }
     function createTest(cat, type) {
       const name = newTestName.trim() || (cat === "glide" ? "Glide Test" : cat === "glide-out" ? "Glide Out Test" : "Kick Test");
-      const t = { id: uid(), name, category: cat, type: type || "", skis: [], snowTemps: [], airTemps: [], notes: "", createdAt: nowStr() };
+      const t = { id: uid(), name, category: cat, type: type || "", skis: [], rounds: [], loserRounds: [], glideOutRuns: [], snowTemps: [], airTemps: [], notes: "", createdAt: nowStr() };
       upd({ tests: [...session.tests || [], t] });
       ping(teamCode, "test_created", { category: cat, type: type || "" });
       setCreatingTest(false);
@@ -11331,6 +11436,9 @@ Rules:
             category: e.category,
             type: e.type || "",
             skis: [],
+            rounds: [],
+            loserRounds: [],
+            glideOutRuns: [],
             snowTemps: [],
             airTemps: [],
             notes: "",
