@@ -2214,8 +2214,17 @@ Outcome: Eliminated`;
   function Hr({ style }) {
     return /* @__PURE__ */ React.createElement("hr", { className: "divider", style });
   }
-  function BackBtn({ onClick, label = "Back" }) {
-    return /* @__PURE__ */ React.createElement("button", { onClick, className: "btn-text", style: { fontSize: 14, padding: "4px 0" } }, "\u2190 ", label);
+  function BackBtn({ onClick, label = "Back", onHome, homeLabel = "Event" }) {
+    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1 } }, /* @__PURE__ */ React.createElement("button", { onClick, className: "btn-text", style: { fontSize: 14, padding: "4px 0" } }, "\u2190 ", label), onHome && /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: onHome,
+        className: "btn-text",
+        style: { fontSize: 10, padding: "0 0 2px", color: "var(--ink-faint)" }
+      },
+      "\u2302 ",
+      homeLabel
+    ));
   }
   function TI({ label, value, onChange, placeholder, autoFocus, style, mic }) {
     const [local, setLocal] = useState(value || "");
@@ -7151,7 +7160,7 @@ Rules:
       return this.props.children;
     }
   };
-  function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], eventForecast = null, onUpdateEventForecast, onRequestCopy }) {
+  function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], eventForecast = null, onUpdateEventForecast, onRequestCopy, onGoHome }) {
     const [tab, setTab] = useState(test.category === "glide-out" || test.type === "Glide Out" ? "glideout" : "tournament");
     const [undoStack, setUndoStack] = useState([]);
     const [undoVisible, setUndoVisible] = useState(false);
@@ -7456,7 +7465,7 @@ Rules:
       { id: "results", label: "Results" },
       { id: "notes", label: "Notes" }
     ];
-    return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header no-print" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
+    return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header no-print" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack, label: "Session", onHome: onGoHome, homeLabel: "Event" }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
       fontSize: 11,
       color: "var(--ink-faint)",
       letterSpacing: "0.06em",
@@ -9108,7 +9117,7 @@ Rules:
       ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: doConfirm }, "Copy \u2192"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: onClose }, "Cancel")))
     );
   }
-  function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], allEvents = [], onPromoteEventWeather, activeTestId, onSetActiveTest, eventForecast = null, onUpdateEventForecast, eventSessions = [], onCopyTestToSession }) {
+  function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], allEvents = [], onPromoteEventWeather, activeTestId, onSetActiveTest, eventForecast = null, onUpdateEventForecast, eventSessions = [], onCopyTestToSession, onGoHome }) {
     const [tab, setTab] = useState("tests");
     const setActiveTestId = onSetActiveTest || (() => {
     });
@@ -9120,6 +9129,7 @@ Rules:
     const [populatingTestId, setPopulatingTestId] = useState(null);
     const [deadlinePickerTest, setDeadlinePickerTest] = useState(null);
     const [copyingTest, setCopyingTest] = useState(null);
+    const [confirmDeleteTestId, setConfirmDeleteTestId] = useState(null);
     function upd(patch) {
       onUpdate({ ...session, ...patch });
     }
@@ -9149,7 +9159,8 @@ Rules:
           fleets,
           eventForecast,
           onUpdateEventForecast,
-          onRequestCopy: () => setCopyingTest(test)
+          onRequestCopy: () => setCopyingTest(test),
+          onGoHome
         }
       ));
     }
@@ -9194,7 +9205,7 @@ Rules:
         },
         onClose: () => setCopyingTest(null)
       }
-    ), /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", textTransform: "uppercase", letterSpacing: "0.06em" } }, "Session"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, session.name)), /* @__PURE__ */ React.createElement(SessionTimer, { startedAt: session.startedAt || session.createdAt })), /* @__PURE__ */ React.createElement("div", { className: "tab-bar" }, TABS.map((t) => /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack, label: "Event", onHome: onGoHome, homeLabel: "Home" }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", textTransform: "uppercase", letterSpacing: "0.06em" } }, "Session"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, session.name)), /* @__PURE__ */ React.createElement(SessionTimer, { startedAt: session.startedAt || session.createdAt })), /* @__PURE__ */ React.createElement("div", { className: "tab-bar" }, TABS.map((t) => /* @__PURE__ */ React.createElement(
       "button",
       {
         key: t.id,
@@ -9285,10 +9296,36 @@ Rules:
           style: { fontSize: 12, padding: "6px 10px", minHeight: 34 }
         },
         "Copy"
+      ), confirmDeleteTestId === test.id ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--red)", fontWeight: 600 } }, "Delete?"), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => {
+            upd({ tests: (session.tests || []).filter((t) => t.id !== test.id) });
+            setConfirmDeleteTestId(null);
+          },
+          className: "btn",
+          style: {
+            fontSize: 11,
+            padding: "4px 10px",
+            minHeight: 28,
+            background: "var(--red)",
+            borderColor: "var(--red)",
+            color: "#fff"
+          }
+        },
+        "Yes"
       ), /* @__PURE__ */ React.createElement(
         "button",
         {
-          onClick: () => upd({ tests: (session.tests || []).filter((t) => t.id !== test.id) }),
+          onClick: () => setConfirmDeleteTestId(null),
+          className: "btn-ghost",
+          style: { fontSize: 11, padding: "4px 10px", minHeight: 28 }
+        },
+        "No"
+      )) : /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => setConfirmDeleteTestId(test.id),
           className: "btn-text",
           style: { fontSize: 20 }
         },
@@ -9543,6 +9580,7 @@ Rules:
   function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd, allEvents, useCelsius, onUnitToggle, teamCode, fleets = [], activeSessionId, onSetActiveSession, activeTestId, onSetActiveTest }) {
     const [tab, setTab] = useState("sessions");
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState(null);
     const [addingSession, setAddingSession] = useState(false);
     const setActiveSessionId = onSetActiveSession || (() => {
     });
@@ -9594,6 +9632,7 @@ Rules:
           eventForecast: event.forecast || null,
           onUpdateEventForecast: (fc) => onUpdate({ ...event, forecast: fc }),
           eventSessions: event.sessions || [],
+          onGoHome: onBack,
           onCopyTestToSession: (destSessionId, copiedTest) => {
             const updatedSessions = (event.sessions || []).map(
               (s) => s.id === destSessionId ? { ...s, tests: [...s.tests || [], copiedTest] } : s
@@ -9692,10 +9731,36 @@ Rules:
           style: { fontSize: 12, padding: "6px 10px", minHeight: 34 }
         },
         "Copy"
+      ), confirmDeleteSessionId === sess.id ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--red)", fontWeight: 600 } }, "Delete?"), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => {
+            upd({ sessions: (event.sessions || []).filter((s) => s.id !== sess.id) });
+            setConfirmDeleteSessionId(null);
+          },
+          className: "btn",
+          style: {
+            fontSize: 11,
+            padding: "4px 10px",
+            minHeight: 28,
+            background: "var(--red)",
+            borderColor: "var(--red)",
+            color: "#fff"
+          }
+        },
+        "Yes"
       ), /* @__PURE__ */ React.createElement(
         "button",
         {
-          onClick: () => upd({ sessions: (event.sessions || []).filter((s) => s.id !== sess.id) }),
+          onClick: () => setConfirmDeleteSessionId(null),
+          className: "btn-ghost",
+          style: { fontSize: 11, padding: "4px 10px", minHeight: 28 }
+        },
+        "No"
+      )) : /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => setConfirmDeleteSessionId(sess.id),
           className: "btn-text",
           style: { fontSize: 20 }
         },
