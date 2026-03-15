@@ -1764,13 +1764,16 @@ Outcome: Eliminated`;
         id: ski.id,
         product: ski.product || "",
         application: ski.application || "",
+        waxForm: ski.waxForm || "",
         notes: ski.notes || "",
         standing: "Active",
         // reset tournament state
         ratings: {},
         raterScores: [],
-        feelNotes: ""
+        feelNotes: "",
+        photos: []
       })),
+      rounds: [],
       snowTemps: [],
       airTemps: [],
       glideOutRuns: [],
@@ -9008,7 +9011,10 @@ Rules:
         id: uid(),
         name: name.trim() || (test.name || "") + " (copy)",
         createdAt: nowStr(),
-        completedAt: void 0
+        completedAt: void 0,
+        rounds: [...test.rounds || []],
+        loserRounds: [...test.loserRounds || []],
+        skis: (test.skis || []).map((s) => ({ ...s }))
       } : { ...copyTest(test, ""), name: name.trim() || (test.name || "") + " (copy)" };
       onCopy(dest.id, copied);
       onClose();
@@ -9208,7 +9214,7 @@ Rules:
           'Tip: when creating a new test, the "Copy from existing" section lets you pick any test from any session in the event and import its fleet and products with results cleared. Empty tests created from the schedule show a "Populate fleet" shortcut directly on the card.'
         ]
       }
-    ), /* @__PURE__ */ React.createElement(Hr, null), (session.tests || []).map((test) => {
+    ), /* @__PURE__ */ React.createElement(Hr, null), (session.tests || []).length === 0 && !creatingTest && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "28px 16px", color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 30, marginBottom: 8 } }, "\u{1F4CB}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 4 } }, "No tests yet"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, lineHeight: 1.5 } }, "Tap + New Test to start a glide or kick tournament, or activate the schedule to auto-create tests.")), (session.tests || []).map((test) => {
       const winner = test.skis?.find((s) => s.standing === "Winner");
       const active = test.skis?.filter((s) => s.standing === "Active") || [];
       return /* @__PURE__ */ React.createElement("div", { key: test.id, className: "card", style: {
@@ -9695,7 +9701,7 @@ Rules:
         },
         "\xD7"
       ))));
-    }), !addingSession ? /* @__PURE__ */ React.createElement(
+    }), (event.sessions || []).length === 0 && !addingSession && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 16px", color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 8 } }, "\u{1F3BF}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 4 } }, "No sessions yet"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, lineHeight: 1.5 } }, "Sessions are testing blocks within a race day \u2014 morning conditions, afternoon conditions, etc.")), !addingSession ? /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn-ghost",
