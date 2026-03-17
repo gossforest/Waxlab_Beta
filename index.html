@@ -1994,31 +1994,49 @@ Outcome: Eliminated`;
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
   function nextSkiId(skis) {
-    const existing = (skis || []).map((s) => (s.id || "").toUpperCase());
-    const parsed = existing.map((id) => {
-      const m = id.match(/^([A-Z]+)(\d+)$/);
-      return m ? { letter: m[1], num: parseInt(m[2]) } : null;
-    }).filter(Boolean);
-    if (!parsed.length) return "A1";
-    const letters = [...new Set(parsed.map((p) => p.letter))].sort();
-    const curLetter = letters[letters.length - 1];
-    const numsInGroup = parsed.filter((p) => p.letter === curLetter).map((p) => p.num);
-    const nextNum = Math.max(...numsInGroup) + 1;
-    if (nextNum > 4) {
-      const nextLetter = String.fromCharCode(curLetter.charCodeAt(0) + 1);
-      return `${nextLetter}1`;
+    const existing = (skis || []).map((s) => (s.id || "").toUpperCase()).filter(Boolean);
+    if (!existing.length) return "A1";
+    const last = existing[existing.length - 1];
+    const numLetter = last.match(/^(\d+)([A-Z]+)$/);
+    if (numLetter) {
+      const num = parseInt(numLetter[1]);
+      const letters = numLetter[2];
+      const lastChar = letters[letters.length - 1];
+      if (lastChar < "Z") return `${num}${String.fromCharCode(lastChar.charCodeAt(0) + 1)}`;
+      return `${num + 1}A`;
     }
-    return `${curLetter}${nextNum}`;
+    const letterNum = last.match(/^([A-Z]+)(\d+)$/);
+    if (letterNum) {
+      const prefix = letterNum[1];
+      const num = parseInt(letterNum[2]);
+      const numsInGroup = existing.map((id) => {
+        const m = id.match(/^([A-Z]+)(\d+)$/);
+        return m && m[1] === prefix ? parseInt(m[2]) : null;
+      }).filter((n) => n !== null);
+      const nextNum = Math.max(...numsInGroup) + 1;
+      if (nextNum > 4) {
+        const nextLetter = String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
+        return `${prefix.slice(0, -1)}${nextLetter}1`;
+      }
+      return `${prefix}${nextNum}`;
+    }
+    const pureNum = last.match(/^(\d+)$/);
+    if (pureNum) return String(parseInt(pureNum[1]) + 1);
+    const pureLetter = last.match(/^([A-Z]+)$/);
+    if (pureLetter) {
+      const lastChar = pureLetter[1][pureLetter[1].length - 1];
+      return lastChar < "Z" ? pureLetter[1].slice(0, -1) + String.fromCharCode(lastChar.charCodeAt(0) + 1) : pureLetter[1] + "A";
+    }
+    return last + "2";
   }
   function suggestedSkiIds(skis) {
     const existing = new Set((skis || []).map((s) => (s.id || "").toUpperCase()));
     const suggestions = [];
-    for (let i = 0; i < 26 && suggestions.length < 6; i++) {
-      const letter = String.fromCharCode(65 + i);
-      const id1 = `${letter}1`;
-      const id2 = `${letter}2`;
-      if (!existing.has(id1)) suggestions.push(id1);
-      if (!existing.has(id2)) suggestions.push(id2);
+    let probe = nextSkiId(skis);
+    for (let attempts = 0; attempts < 20 && suggestions.length < 6; attempts++) {
+      if (!existing.has(probe) && !suggestions.includes(probe)) suggestions.push(probe);
+      probe = nextSkiId([{ id: probe }]);
+      if (!probe) break;
     }
     return suggestions;
   }
@@ -3077,7 +3095,8 @@ Possible actions and their fields:
 - blind: {"action":"blind"} \u2014 toggle blind mode reveal
 
 Rules:
-- Ski IDs are typically alphanumeric like "A1", "11a", "S3". Match spoken IDs to the known list.
+- Ski IDs are typically alphanumeric like "A1", "11a", "1b", "S3", "12B". Match spoken IDs to the known list.
+- IDs may be digit+letter ("1a", "11b") OR letter+digit ("A1", "S3") \u2014 both are common.
 - The speaker may use phonetic alphabet (alpha, bravo, charlie...) or just letters/numbers.
 - Temperatures may be negative ("minus 5", "negative 3").
 - If the command doesn't match any action clearly, return: {"action":"unknown","raw":"${transcript}"}
@@ -3113,6 +3132,11 @@ Rules:
       const results = [];
       const alphaMatches = [...str.matchAll(/(?<![a-z\d])([a-z]{1,3}\d{1,2})(?!\d)/gi)];
       for (const m of alphaMatches) results.push(m[1].toUpperCase());
+      const numAlphaMatches = [...str.matchAll(/(?<!\d)(\d{1,2}[a-z]{1,2})(?![a-z\d])/gi)];
+      for (const m of numAlphaMatches) {
+        const id = m[1].toUpperCase();
+        if (!results.includes(id)) results.push(id);
+      }
       if (knownUpper.length > 0) {
         const numMatches = [...str.matchAll(/\b(\d{1,2})\b/g)];
         for (const m of numMatches) {
@@ -3434,6 +3458,27 @@ Rules:
         const startNum = parseInt(numMatch[1]);
         return Array.from({ length: count }, (_, i) => String(startNum + i));
       }
+      const letterMatch = startId.match(/^([A-Z]+)$/i);
+      if (letterMatch) {
+        const ids = [];
+        let cur = letterMatch[1].toUpperCase();
+        while (ids.length < count) {
+          ids.push(cur);
+          let chars = cur.split("");
+          let carry = true;
+          for (let i = chars.length - 1; i >= 0 && carry; i--) {
+            if (chars[i] < "Z") {
+              chars[i] = String.fromCharCode(chars[i].charCodeAt(0) + 1);
+              carry = false;
+            } else {
+              chars[i] = "A";
+            }
+          }
+          if (carry) chars.unshift("A");
+          cur = chars.join("");
+        }
+        return ids;
+      }
       return Array.from({ length: count }, (_, i) => `${startId}${i + 1}`);
     }
     function applyQuickAdd() {
@@ -3448,23 +3493,13 @@ Rules:
       if (idStart) {
         ids = generateIdSequence(idStart, count);
       } else {
-        const existingIds = fleet.skis.map((s) => s.id).filter(Boolean);
-        let prefix = "S";
-        if (existingIds.length > 0) {
-          const m = existingIds[existingIds.length - 1].match(/^([A-Z]+)(\d+)$/i);
-          if (m) prefix = m[1].toUpperCase();
-        } else if (fleet.name) {
-          prefix = fleet.name.replace(/[^A-Z]/gi, "").toUpperCase().slice(0, 2) || "S";
+        const existingSkis = fleet.skis.filter((s) => s.id);
+        if (existingSkis.length > 0) {
+          ids = generateIdSequence(nextSkiId(existingSkis), count);
+        } else {
+          const prefix = fleet.name ? fleet.name.replace(/[^A-Z]/gi, "").toUpperCase().slice(0, 2) || "S" : "S";
+          ids = generateIdSequence(prefix + "1", count);
         }
-        let nextNum = 1;
-        if (existingIds.length > 0) {
-          const nums = existingIds.map((id) => {
-            const m = id.match(/(\d+)$/);
-            return m ? parseInt(m[1]) : 0;
-          });
-          nextNum = Math.max(...nums) + 1;
-        }
-        ids = generateIdSequence(prefix + nextNum, count);
       }
       const desc = qaDesc.trim();
       const newSkis = ids.map((id) => ({
@@ -3484,13 +3519,7 @@ Rules:
       onChange({ ...fleet, skis });
     }
     function addSki() {
-      const ids = fleet.skis.map((s) => s.id).filter(Boolean);
-      let nextId = "";
-      if (ids.length > 0) {
-        const last = ids[ids.length - 1];
-        const m = last.match(/^([A-Z]+)(\d+)$/);
-        if (m) nextId = m[1] + (parseInt(m[2]) + 1);
-      }
+      const nextId = fleet.skis.length > 0 ? nextSkiId(fleet.skis) : "";
       onChange({ ...fleet, skis: [...fleet.skis, { id: nextId, make: "", flex: "", grind: "", notes: "" }] });
     }
     function removeSki(idx) {
