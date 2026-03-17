@@ -2986,6 +2986,7 @@ Outcome: Eliminated`;
       won: 1,
       ate: 8
     };
+    t = t.replace(/\btoo close\b/g, "tooclose");
     t = t.replace(
       /\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|for|too|won|ate)\b/g,
       (m) => numWords[m] !== void 0 ? numWords[m] : m
@@ -3048,8 +3049,21 @@ Outcome: Eliminated`;
     for (const [pat, rep] of phoneticLetters) t = t.replace(pat, rep);
     t = t.replace(/\brunner[\s\-]*up\b/g, "runnerup");
     t = t.replace(/\b(vs\.?|versus|against|v\.)\b/g, "versus");
-    t = t.replace(/\b(pear|pare)\b/g, "pair");
-    t = t.replace(/\b(ski|skis|the|is|to|and|or|number|id|with|put|set|get)\b/g, " ");
+    t = t.replace(/\b(pear|pare|pared|paired)\b/g, "pair");
+    t = t.replace(/\b(eliminate|illuminated|eliminated|aluminate|illumine)\b/g, "eliminate");
+    t = t.replace(/\b(advance|advanced|advances|avance|a dance)\b/g, "advance");
+    t = t.replace(/\b(winner|wiener|whiner|winner|wenner)\b/g, "winner");
+    t = t.replace(/\b(restore|re-store|re store|restores)\b/g, "restore");
+    t = t.replace(/\b(scratch|scratched)\b/g, "eliminate");
+    t = t.replace(/\b(tie|tied|tying|both|draw)\b/g, "tie");
+    t = t.replace(/\b(below zero|sub zero|subzero)\b/g, "minus");
+    t = t.replace(/\bfeels?\s+like\b/g, "note");
+    t = t.replace(/\bgood feel\b/g, "note good feel");
+    t = t.replace(/\bbad feel\b/g, "note bad feel");
+    t = t.replace(/\b(declare|declaring)\b/g, "winner");
+    t = t.replace(/\bkick\s+out\b/g, "eliminate");
+    t = t.replace(/\btooclose\b/g, "tie");
+    t = t.replace(/\b(ski|skis|the|is|to|and|or|number|id|with|put|set|get|this|that|it|a)\b/g, " ");
     t = t.replace(/\s+/g, " ").trim();
     t = t.replace(/\b(snow|air|temp)\s+(\d)/g, "$1__$2");
     t = t.replace(/\b([a-z]{1,3})\s+(\d{1,2})\b/g, "$1$2");
@@ -3081,27 +3095,34 @@ Voice transcript: "${transcript}"
 Parse this into a structured command. Return ONLY valid JSON, no markdown, no explanation.
 
 Possible actions and their fields:
-- advance: {"action":"advance","skiId":"<id>"}
-- eliminate: {"action":"eliminate","skiId":"<id>"}
-- winner: {"action":"winner","skiId":"<id>"}
+- advance: {"action":"advance","skiId":"<id>"} \u2014 ski moves to next round
+- eliminate: {"action":"eliminate","skiId":"<id>"} \u2014 ski is out
+- winner: {"action":"winner","skiId":"<id>"} \u2014 declare this ski the winner
+- tie: {"action":"tie","skiId":"<id1 or null>","skiId2":"<id2 or null>"} \u2014 both skis advance (too close to call)
 - restore: {"action":"restore","skiId":"<id>"} \u2014 bring an eliminated ski back
 - runnerup: {"action":"runnerup","skiId":"<id>"} \u2014 mark as runner-up / second place
-- pair: {"action":"pair","skiId":"<id1>","skiId2":"<id2>"} \u2014 compare two skis
+- pair: {"action":"pair","skiId":"<id1>","skiId2":"<id2>"} \u2014 select two skis to compare
 - rate: {"action":"rate","skiId":"<id>","glide":<1-10 or null>,"kick":<1-10 or null>}
 - note: {"action":"note","skiId":"<id>","text":"<note text>"}
-- form: {"action":"form","skiId":"<id>","form":"<block|powder|liquid|hard|klister|spray|paste>"}
+- form: {"action":"form","skiId":"<id>","form":"<block|powder|liquid|hard|klister|spray|paste|combination>"}
 - temp: {"action":"temp","kind":"snow","val":<number in the unit spoken>}
 - temp: {"action":"temp","kind":"air","val":<number in the unit spoken>}
 - undo: {"action":"undo"}
 - blind: {"action":"blind"} \u2014 toggle blind mode reveal
 
 Rules:
-- Ski IDs are typically alphanumeric like "A1", "11a", "1b", "S3", "12B". Match spoken IDs to the known list.
-- IDs may be digit+letter ("1a", "11b") OR letter+digit ("A1", "S3") \u2014 both are common.
-- The speaker may use phonetic alphabet (alpha, bravo, charlie...) or just letters/numbers.
-- Temperatures may be negative ("minus 5", "negative 3").
+- Ski IDs may be digit+letter ("1a","11b") OR letter+digit ("A1","S3") OR pure number ("7") \u2014 all common.
+- Match spoken IDs to the known list using phonetic alphabet, number words, and common mishears.
+- "advance"/"next"/"keep"/"through"/"good"/"stays" all mean advance.
+- "eliminate"/"out"/"drop"/"scratch"/"done"/"cut"/"slower"/"nope" all mean eliminate.
+- "tie"/"draw"/"both"/"equal"/"too close"/"can't tell"/"no difference" all mean tie.
+- "winner"/"declare"/"first"/"best"/"fastest"/"take it" mean winner.
+- "restore"/"bring back"/"put back"/"re-enter" mean restore.
+- "kick out" means eliminate, NOT a kick rating.
+- "feels like" / "felt" before descriptive words means note, not rate.
+- Temperatures may be negative ("minus 5", "below zero", "negative 3").
 - If the command doesn't match any action clearly, return: {"action":"unknown","raw":"${transcript}"}
-- Match intent liberally \u2014 "kick out B2", "drop ski 3", "next is A1" are all valid phrasings.`;
+- Match intent liberally \u2014 "kick out B2", "drop ski 3", "next is A1", "call it a tie" are all valid.`;
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -3177,17 +3198,194 @@ Rules:
       return null;
     }
     const actionMap = [
-      { action: "advance", words: ["advance", "advanced", "next", "pass", "keep", "forward", "promote"] },
-      { action: "eliminate", words: ["eliminate", "eliminated", "out", "drop", "remove", "scratch", "discard", "lose", "lost"] },
-      { action: "winner", words: ["winner", "winners", "win", "wins", "first", "best", "choose", "select", "champion"] },
-      { action: "runnerup", words: ["runnerup", "runner", "second", "2nd", "silver"] },
-      { action: "pair", words: ["pair", "compare", "versus", "match", "race"] },
-      { action: "restore", words: ["restore", "revive", "return", "reenter", "rewax"] },
-      { action: "undo", words: ["undo", "back", "revert", "mistake"] },
-      { action: "blind", words: ["reveal", "blind", "unblind", "hide products", "show products"] },
-      { action: "rate", words: ["rate", "rated", "rating", "score", "scored", "mark", "give"] },
-      { action: "note", words: ["note", "notes", "comment", "observe", "observation", "log"] },
-      { action: "form", words: ["form", "waxform", "type"] }
+      { action: "advance", words: [
+        "advance",
+        "advanced",
+        "advances",
+        "next",
+        "pass",
+        "passed",
+        "keep",
+        "forward",
+        "promote",
+        "through",
+        "continues",
+        "continue",
+        "good",
+        "move",
+        "moving",
+        "go",
+        "goes",
+        "survived",
+        "survives",
+        "survive",
+        "stays",
+        "stay"
+      ] },
+      { action: "eliminate", words: [
+        "eliminate",
+        "eliminated",
+        "eliminates",
+        "out",
+        "drop",
+        "dropped",
+        "remove",
+        "removed",
+        "scratch",
+        "scratched",
+        "discard",
+        "discarded",
+        "lose",
+        "lost",
+        "done",
+        "finished",
+        "cut",
+        "cuts",
+        "bye",
+        "gone",
+        "failed",
+        "fails",
+        "fail",
+        "slower",
+        "slowest",
+        "nope",
+        "no",
+        "not",
+        "notch",
+        "knocked",
+        "kick out",
+        "retire",
+        "retired"
+      ] },
+      { action: "winner", words: [
+        "winner",
+        "winners",
+        "win",
+        "wins",
+        "first",
+        "best",
+        "choose",
+        "select",
+        "champion",
+        "declare",
+        "take it",
+        "takes it",
+        "chosen",
+        "picking",
+        "pick",
+        "fastest",
+        "top",
+        "gold"
+      ] },
+      { action: "tie", words: [
+        "tie",
+        "tied",
+        "tying",
+        "draw",
+        "equal",
+        "same",
+        "even",
+        "cant tell",
+        "cant decide",
+        "no difference"
+      ] },
+      { action: "runnerup", words: [
+        "runnerup",
+        "runner",
+        "second",
+        "2nd",
+        "silver",
+        "close second",
+        "nearly",
+        "almost",
+        "runner up",
+        "place second"
+      ] },
+      { action: "pair", words: [
+        "pair",
+        "compare",
+        "versus",
+        "match",
+        "race",
+        "test",
+        "against",
+        "head to head",
+        "head-to-head",
+        "matchup",
+        "face",
+        "facing"
+      ] },
+      { action: "restore", words: [
+        "restore",
+        "revive",
+        "return",
+        "reenter",
+        "rewax",
+        "re-enter",
+        "bring back",
+        "re-wax",
+        "add back",
+        "put back",
+        "reinstate"
+      ] },
+      { action: "undo", words: [
+        "undo",
+        "back",
+        "revert",
+        "mistake",
+        "wrong",
+        "cancel",
+        "oops",
+        "error",
+        "that was wrong",
+        "go back",
+        "take back",
+        "take that back"
+      ] },
+      { action: "blind", words: [
+        "reveal",
+        "blind",
+        "unblind",
+        "hide products",
+        "show products",
+        "unbind",
+        "unblind",
+        "show names",
+        "hide names"
+      ] },
+      { action: "rate", words: [
+        "rate",
+        "rated",
+        "rating",
+        "score",
+        "scored",
+        "mark",
+        "give",
+        "ranks",
+        "ranking",
+        "feel",
+        "feels",
+        "feeling",
+        "sensation",
+        "i give",
+        "giving"
+      ] },
+      { action: "note", words: [
+        "note",
+        "notes",
+        "comment",
+        "observe",
+        "observation",
+        "log",
+        "write",
+        "record",
+        "noticed",
+        "noticing",
+        "felt",
+        "feeling",
+        "feedback"
+      ] },
+      { action: "form", words: ["form", "waxform", "type", "using", "used"] }
     ];
     let detectedAction = null;
     for (const { action, words } of actionMap) {
@@ -3205,13 +3403,18 @@ Rules:
       if (skiId && skiId2) return { action: "pair", skiId, skiId2 };
       if (hasPairKeyword) return null;
     }
+    if (detectedAction === "tie") {
+      if (skiId && skiId2) return { action: "tie", skiId, skiId2 };
+      if (skiId) return { action: "tie", skiId, skiId2: null };
+      return { action: "tie", skiId: null, skiId2: null };
+    }
     if (detectedAction === "runnerup") {
       if (skiId) return { action: "runnerup", skiId };
       return null;
     }
     if (detectedAction === "undo") return { action: "undo" };
     if (detectedAction === "blind") return { action: "blind" };
-    if (detectedAction && !["rate", "note", "form", "pair"].includes(detectedAction)) {
+    if (detectedAction && !["rate", "note", "form", "pair", "tie"].includes(detectedAction)) {
       if (skiId) return { action: detectedAction, skiId };
       return null;
     }
@@ -3237,15 +3440,16 @@ Rules:
       const text = afterId || norm.replace(/\bnote\b/, "").replace(skiId.toLowerCase(), "").trim();
       if (text) return { action: "note", skiId, text };
     }
-    const WAX_FORMS = ["block", "powder", "liquid", "hard", "klister", "spray", "paste"];
-    for (const form of WAX_FORMS) {
+    const WAX_FORMS = ["block", "powder", "liquid", "hard", "klister", "spray", "paste", "combination", "combo"];
+    for (let form of WAX_FORMS) {
       if (new RegExp("\\b" + form + "\\b").test(norm)) {
+        if (form === "combo") form = "combination";
         if (skiId) return { action: "form", skiId, form };
       }
     }
     return null;
   }
-  function VoiceCommandBar({ skis, isGlide, onAdvance, onEliminate, onWinner, onRestore, onRate, onPair, onRunnerUp, onSnowTemp, onAirTemp, onNote, onForm, onUndo, onBlind }) {
+  function VoiceCommandBar({ skis, isGlide, onAdvance, onEliminate, onWinner, onRestore, onRate, onPair, onTie, onRunnerUp, onSnowTemp, onAirTemp, onNote, onForm, onUndo, onBlind }) {
     const [pending, setPending] = useState(null);
     const knownIds = (skis || []).map((s) => s.id);
     const [parsing, setParsing] = useState(false);
@@ -3275,6 +3479,7 @@ Rules:
       if (action === "restore") onRestore?.(skiId);
       if (action === "rate") onRate?.(skiId, { glide, kick });
       if (action === "pair") onPair?.(skiId, skiId2);
+      if (action === "tie") onTie?.(skiId, skiId2);
       if (action === "runnerup") onRunnerUp?.(skiId);
       if (action === "temp" && kind === "snow") onSnowTemp?.(val);
       if (action === "temp" && kind === "air") onAirTemp?.(val);
@@ -3291,6 +3496,7 @@ Rules:
       if (cmd.action === "winner") return `Declare winner: ${cmd.skiId}`;
       if (cmd.action === "restore") return `Restore ${cmd.skiId}`;
       if (cmd.action === "pair") return `Set pair: ${cmd.skiId} vs ${cmd.skiId2}`;
+      if (cmd.action === "tie") return cmd.skiId ? `Tie \u2014 ${cmd.skiId}${cmd.skiId2 ? " & " + cmd.skiId2 : ""} both advance` : "Tie current pair \u2014 both advance";
       if (cmd.action === "runnerup") return `Mark runner-up: ${cmd.skiId}`;
       if (cmd.action === "temp") return `Log ${cmd.kind} temp: ${cmd.val}\xB0`;
       if (cmd.action === "note") return `Note on ${cmd.skiId}: "${cmd.text}"`;
@@ -3305,7 +3511,187 @@ Rules:
       }
       return cmd.action;
     }
-    return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, pending && /* @__PURE__ */ React.createElement("div", { style: {
+    const [showVocab, setShowVocab] = useState(false);
+    return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, showVocab && /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        onClick: () => setShowVocab(false),
+        style: {
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.45)",
+          zIndex: 300,
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "center"
+        }
+      },
+      /* @__PURE__ */ React.createElement(
+        "div",
+        {
+          onClick: (e) => e.stopPropagation(),
+          style: {
+            background: "var(--paper)",
+            borderRadius: "16px 16px 0 0",
+            width: "100%",
+            maxWidth: 520,
+            maxHeight: "80vh",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden"
+          }
+        },
+        /* @__PURE__ */ React.createElement("div", { style: {
+          padding: "16px 20px 12px",
+          borderBottom: "1px solid var(--rule)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexShrink: 0
+        } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, "Recognized Phrases"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 2 } }, "AI-powered \xB7 phonetic alphabet \xB7 any natural phrasing")), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setShowVocab(false),
+            style: {
+              background: "none",
+              border: "none",
+              fontSize: 22,
+              cursor: "pointer",
+              color: "var(--ink-faint)",
+              lineHeight: 1,
+              padding: "0 4px"
+            }
+          },
+          "\xD7"
+        )),
+        /* @__PURE__ */ React.createElement("div", { style: { overflowY: "auto", padding: "14px 20px 32px" } }, [
+          { label: "Advance a ski", color: "var(--green)", phrases: [
+            '"Advance A1"',
+            '"Next is 1a"',
+            '"Keep A1"',
+            '"A1 through"',
+            '"A1 good"',
+            '"A1 goes"',
+            '"A1 survived"',
+            '"A1 stays"'
+          ] },
+          { label: "Eliminate a ski", color: "var(--red)", phrases: [
+            '"Out B2"',
+            '"Eliminate B2"',
+            '"Drop B2"',
+            '"Cut B2"',
+            '"B2 done"',
+            '"B2 slower"',
+            '"Scratch B2"',
+            '"B2 retired"',
+            '"Kick out B2"'
+          ] },
+          { label: "Declare winner", color: "var(--ink)", phrases: [
+            '"Winner A1"',
+            '"Declare A1"',
+            '"A1 wins"',
+            '"A1 fastest"',
+            '"A1 takes it"',
+            '"Best is A1"',
+            '"Pick A1"',
+            '"Gold A1"'
+          ] },
+          { label: "Tie \u2014 both advance", color: "var(--amber)", phrases: [
+            '"Tie"',
+            '"Draw"',
+            '"Equal"',
+            '"Too close"',
+            '"Same"',
+            `"Can't tell"`,
+            '"No difference"',
+            '"Even"'
+          ] },
+          { label: "Pair two skis", color: "var(--blue)", phrases: [
+            '"A1 versus B2"',
+            '"A1 vs B2"',
+            '"Pair A1 B2"',
+            '"Compare A1 B2"',
+            '"A1 against B2"',
+            '"A1 B2"'
+          ] },
+          { label: "Restore eliminated ski", color: "var(--ink-mid)", phrases: [
+            '"Restore B2"',
+            '"Bring back B2"',
+            '"Put back B2"',
+            '"Return B2"',
+            '"Re-enter B2"',
+            '"B2 back in"'
+          ] },
+          { label: "Runner-up / 2nd place", color: "var(--ink-mid)", phrases: [
+            '"Runner-up A1"',
+            '"A1 second"',
+            '"A1 2nd"',
+            '"A1 silver"',
+            '"A1 almost"'
+          ] },
+          { label: "Rate a ski (1\u201310)", color: "var(--ink-mid)", phrases: [
+            '"Rate A1 glide 8"',
+            '"A1 kick 6 glide 9"',
+            '"Score A1 7"',
+            '"A1 feel 8"',
+            '"Give A1 a 9"',
+            '"Mark A1 kick 5"'
+          ] },
+          { label: "Log temperature", color: "var(--ink-mid)", phrases: [
+            '"Snow temp 28"',
+            '"Air temp negative 3"',
+            '"Snow minus 5"',
+            '"Air 14"',
+            '"Snow below zero"'
+          ] },
+          { label: "Add a note", color: "var(--ink-mid)", phrases: [
+            '"Note A1 felt slow"',
+            '"A1 good grip zones"',
+            '"Log A1 icy in the tracks"',
+            '"Comment A1 sticky"'
+          ] },
+          { label: "Wax form", color: "var(--ink-mid)", phrases: [
+            '"Block A1"',
+            '"Liquid B2"',
+            '"Klister C1"',
+            '"Powder A1"',
+            '"Combination B2"',
+            '"Hard C1"'
+          ] },
+          { label: "Undo / Blind mode", color: "var(--ink-mid)", phrases: [
+            '"Undo"',
+            '"Oops"',
+            '"That was wrong"',
+            '"Mistake"',
+            '"Reveal"',
+            '"Blind"',
+            '"Show names"'
+          ] }
+        ].map((section) => /* @__PURE__ */ React.createElement("div", { key: section.label, style: { marginBottom: 18 } }, /* @__PURE__ */ React.createElement("div", { style: {
+          fontSize: 10,
+          fontWeight: 700,
+          color: section.color,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginBottom: 7,
+          fontFamily: "'SF Mono','Fira Code',monospace"
+        } }, section.label), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 5 } }, section.phrases.map((p) => /* @__PURE__ */ React.createElement("span", { key: p, style: {
+          fontSize: 12,
+          background: "var(--paper-2)",
+          border: "1px solid var(--rule)",
+          borderRadius: 5,
+          padding: "4px 9px",
+          color: "var(--ink-mid)",
+          fontFamily: "'SF Mono','Fira Code',monospace"
+        } }, p))))), /* @__PURE__ */ React.createElement("div", { style: {
+          fontSize: 11,
+          color: "var(--ink-faint)",
+          lineHeight: 1.6,
+          paddingTop: 8,
+          borderTop: "1px solid var(--rule)"
+        } }, 'Ski IDs can be spoken as letters, numbers, or NATO phonetic alphabet (Alpha, Bravo, Charlie\u2026). Negative temperatures: "minus 5", "negative 3", "below zero". The AI parser understands natural phrasing \u2014 these are examples, not required formats.'))
+      )
+    ), pending && /* @__PURE__ */ React.createElement("div", { style: {
       padding: "10px 14px",
       background: "var(--paper-2)",
       borderRadius: 8,
@@ -3341,13 +3727,13 @@ Rules:
         onClick: () => setPending(null)
       },
       pending.action === "unknown" ? "Dismiss" : "Cancel"
-    ))), /* @__PURE__ */ React.createElement(
+    ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: listening ? stop : parsing ? void 0 : start,
         className: listening ? "btn" : "btn-ghost",
         style: {
-          width: "100%",
+          flex: 1,
           fontSize: 14,
           padding: "10px 0",
           display: "flex",
@@ -3361,13 +3747,16 @@ Rules:
         }
       },
       listening ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(StopIcon, { size: 14, color: "#fff" }), " Listening \u2014 tap to stop") : parsing ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13 } }, "\u23F3"), " Parsing\u2026") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(MicIcon, { size: 16 }), " Voice Command")
-    ), !listening && !pending && /* @__PURE__ */ React.createElement("div", { style: {
-      fontSize: 11,
-      color: "var(--ink-faint)",
-      textAlign: "center",
-      marginTop: 6,
-      lineHeight: 1.7
-    } }, /* @__PURE__ */ React.createElement("div", null, '"Advance A1" \xB7 "Eliminate B2" \xB7 "Winner C1"'), /* @__PURE__ */ React.createElement("div", null, '"Pair A1 B2" \xB7 "Restore B2" \xB7 "Runner-up A1"'), /* @__PURE__ */ React.createElement("div", null, '"Rate A1 glide 8" \xB7 "A1 kick 6 glide 9"'), /* @__PURE__ */ React.createElement("div", null, '"Snow temp 28" \xB7 "Air temp negative 3"'), /* @__PURE__ */ React.createElement("div", null, '"Note A1 felt slow" \xB7 "Block A1" \xB7 "Klister B2"'), /* @__PURE__ */ React.createElement("div", null, '"Undo" \xB7 "Reveal"'), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 3, color: "var(--rule)" } }, "AI-powered \xB7 any natural phrasing \xB7 phonetic alphabet")));
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => setShowVocab(true),
+        className: "btn-ghost",
+        style: { fontSize: 12, padding: "10px 14px", minHeight: 44, color: "var(--ink-faint)" },
+        title: "Recognized phrases"
+      },
+      "?"
+    )));
   }
   function FleetSkiRow({ ski, onChange, onDelete }) {
     return /* @__PURE__ */ React.createElement("div", { style: {
@@ -5892,7 +6281,7 @@ Rules:
                 round.tie ? "" : round.winner || "",
                 round.tie ? "" : round.loser || "",
                 round.tie ? "Yes" : "No",
-                round.tie ? `${skiA} vs ${skiB} \u2014 Tied` : round.winner && round.loser ? `${round.winner} beat ${round.loser}` : round.winner ? `${round.winner} advanced` : ""
+                round.tie ? `${skiA} vs ${skiB} \u2014 Tied (both advance)` : round.winner && round.loser ? `${round.winner} beat ${round.loser}` : round.winner ? `${round.winner} advanced` : ""
               ]);
             });
           });
@@ -6173,7 +6562,7 @@ Rules:
     }
     const composite = isGlide ? ratings.glide : ratings.kick != null && ratings.glide != null ? ratings.kick + ratings.glide : null;
     const max = isGlide ? 10 : 20;
-    const sColor = ski.standing === "Winner" ? "var(--green)" : ski.standing === "Runner-Up" ? "var(--amber)" : ski.standing === "Tied" ? "var(--amber)" : ski.standing === "Eliminated" ? "var(--red)" : "var(--ink-faint)";
+    const sColor = ski.standing === "Winner" ? "var(--green)" : ski.standing === "Runner-Up" ? "var(--amber)" : ski.standing === "Eliminated" ? "var(--red)" : "var(--ink-faint)";
     const sBorder = ski.standing === "Winner" ? "3px solid var(--green)" : ski.standing === "Runner-Up" ? "3px solid var(--amber)" : ski.standing === "Eliminated" ? "3px solid var(--rule)" : "none";
     return /* @__PURE__ */ React.createElement("div", { className: "card", style: { marginBottom: 8, borderLeft: sBorder } }, showPhotos && onPhotoSave && /* @__PURE__ */ React.createElement(
       PhotoSheet,
@@ -6924,6 +7313,7 @@ Rules:
     lookupProductForm: lookupProductForm2,
     onVocabAdd,
     lastRoundFor,
+    tieHistoryFor,
     declareWinner,
     commitDeclareWinner,
     pendingWinner,
@@ -6933,12 +7323,11 @@ Rules:
     const comp = getComp(ski);
     const hist = lastRoundFor(ski.id);
     const isElim = ski.standing === "Eliminated";
-    const isTied = ski.standing === "Tied";
     const inPair = (currentPair || []).includes(ski.id);
     const rs = roundState;
-    const badge = status === "tested" ? { label: `R${rs?.currentRound} \u2713`, bg: "rgba(52,199,89,0.12)", color: "var(--green)" } : status === "active" ? { label: `R${rs?.currentRound}`, bg: "rgba(0,122,255,0.08)", color: "var(--blue)" } : status === "elim" ? { label: `Out R${hist?.round ?? "?"}`, bg: "rgba(255,59,48,0.08)", color: "var(--red)" } : status === "tied" ? { label: "Tied", bg: "rgba(255,159,10,0.1)", color: "var(--amber)" } : null;
+    const badge = status === "tested" ? { label: `R${rs?.currentRound} \u2713`, bg: "rgba(52,199,89,0.12)", color: "var(--green)" } : status === "active" ? { label: `R${rs?.currentRound}`, bg: "rgba(0,122,255,0.08)", color: "var(--blue)" } : status === "elim" ? { label: `Out R${hist?.round ?? "?"}`, bg: "rgba(255,59,48,0.08)", color: "var(--red)" } : null;
     const cardBorder = inPair ? "2px solid var(--blue)" : status === "tested" ? "1.5px solid var(--green)" : "1.5px solid var(--rule)";
-    const cardBg = isElim || isTied ? "var(--paper-2)" : "var(--paper)";
+    const cardBg = isElim ? "var(--paper-2)" : "var(--paper)";
     return /* @__PURE__ */ React.createElement("div", { style: {
       marginBottom: 6,
       border: cardBorder,
@@ -6975,7 +7364,17 @@ Rules:
       overflow: "hidden",
       textOverflow: "ellipsis",
       whiteSpace: "nowrap"
-    } }, '"', ski.feelNotes, '"')), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexShrink: 0 } }, comp != null && /* @__PURE__ */ React.createElement(RatingBadge, { score: comp, max }), (status === "active" || status === "tested") && !winner && /* @__PURE__ */ React.createElement(
+    } }, '"', ski.feelNotes, '"'), !isElim && tieHistoryFor && (() => {
+      const ties = tieHistoryFor(ski.id);
+      if (!ties.length) return null;
+      return /* @__PURE__ */ React.createElement("div", { style: {
+        fontSize: 10,
+        color: "var(--amber)",
+        marginTop: 3,
+        fontFamily: "'SF Mono','Fira Code','Courier New',monospace",
+        letterSpacing: "0.04em"
+      } }, "Tied ", ties.map((t) => `${t.opponent} R${t.round}`).join(", "));
+    })()), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexShrink: 0 } }, comp != null && /* @__PURE__ */ React.createElement(RatingBadge, { score: comp, max }), (status === "active" || status === "tested") && !winner && /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: () => setCurrentPair((prev) => {
@@ -7056,7 +7455,7 @@ Rules:
         }
       },
       /* @__PURE__ */ React.createElement(TrophyIcon, { size: 13, color: "currentColor" })
-    )), (isElim || isTied) && rewaxId !== ski.id && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+    )), isElim && rewaxId !== ski.id && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn-ghost",
@@ -7072,7 +7471,7 @@ Rules:
         onClick: () => startRewax(ski)
       },
       "\u21BA Re-wax"
-    )), (isElim || isTied) && rewaxId === ski.id && /* @__PURE__ */ React.createElement(
+    )), isElim && rewaxId === ski.id && /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn-ghost",
@@ -7080,7 +7479,7 @@ Rules:
         onClick: () => setRewaxId(null)
       },
       "Cancel"
-    ), !isElim && !isTied && /* @__PURE__ */ React.createElement(
+    ), !isElim && /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn-ghost",
@@ -7088,7 +7487,7 @@ Rules:
         onClick: () => setOpen((o) => !o)
       },
       open ? "Hide" : "Rate"
-    ))), open && !isElim && !isTied && (() => {
+    ))), open && !isElim && (() => {
       const raters = test.testers || [];
       const useMulti = !isGlide && raters.length > 0;
       if (useMulti) {
@@ -7320,9 +7719,8 @@ Rules:
     const isGlide = test.category === "glide" || test.category === "glide-out";
     const skiSort = (a, b) => a.id.localeCompare(b.id, void 0, { numeric: true, sensitivity: "base" });
     const activeSki = (test.skis || []).filter((s) => s.standing === "Active").sort(skiSort);
-    const eliminated = (test.skis || []).filter((s) => s.standing === "Eliminated" || s.standing === "Tied");
+    const eliminated = (test.skis || []).filter((s) => s.standing === "Eliminated");
     const winner = (test.skis || []).find((s) => s.standing === "Winner");
-    const tied = (test.skis || []).filter((s) => s.standing === "Tied");
     const isBlind = test.blindMode && !test.blindRevealed;
     const getComp = (s) => {
       const r = s.ratings || {};
@@ -7391,7 +7789,7 @@ Rules:
             skis: (test.skis || []).map((s) => s.id === skiId || s.id === opponentId ? { ...s, standing: "Active" } : s),
             rounds: [...test.rounds || [], { roundNum: rs.currentRound, skiA: opponentId, skiB: skiId, winner: null, loser: null, tie: true }]
           });
-          pushUndo(snap, "Both advanced \u2014 both continue");
+          pushUndo(snap, `Tie \u2014 ${opponentId} and ${skiId} both advance`);
           setPendingResult(null);
         } else {
           commitPairResult(skiId, opponentId, "elim");
@@ -7412,10 +7810,14 @@ Rules:
           const snap = { skis: [...test.skis || []], rounds: [...test.rounds || []] };
           const rs = computeRoundState(test.rounds || [], test.skis || []);
           upd({
-            skis: (test.skis || []).map((s) => s.id === skiId || s.id === opponentId ? { ...s, standing: "Tied" } : s),
-            rounds: [...test.rounds || [], { roundNum: rs.currentRound, skiA: opponentId, skiB: skiId, winner: null, loser: null, tie: true }]
+            skis: (test.skis || []).map((s) => s.id === skiId || s.id === opponentId ? { ...s, standing: "Eliminated" } : s),
+            rounds: [
+              ...test.rounds || [],
+              { roundNum: rs.currentRound, skiA: opponentId, skiB: skiId, winner: null, loser: opponentId, tie: false },
+              { roundNum: rs.currentRound, skiA: skiId, skiB: opponentId, winner: null, loser: skiId, tie: false }
+            ]
           });
-          pushUndo(snap, "Both eliminated \u2014 recorded as tie");
+          pushUndo(snap, `Both eliminated \u2014 ${opponentId} and ${skiId} out`);
           setPendingResult(null);
         }
       } else {
@@ -7516,10 +7918,10 @@ Rules:
           const rs = computeRoundState(test.rounds || [], test.skis || []);
           const roundNum = rs.currentRound;
           upd({
-            skis: (test.skis || []).map((s) => s.id === skiId || s.id === opponentId ? { ...s, standing: "Tied" } : s),
+            skis: (test.skis || []).map((s) => s.id === skiId || s.id === opponentId ? { ...s, standing: "Active" } : s),
             rounds: [...test.rounds || [], { roundNum, skiA: opponentId, skiB: skiId, winner: null, loser: null, tie: true }]
           });
-          pushUndo(snap, "Both 2nd \u2014 recorded as tie");
+          pushUndo(snap, `Tie \u2014 ${opponentId} and ${skiId} both advance`);
           setPendingResult(null);
         }
       } else {
@@ -7535,11 +7937,11 @@ Rules:
       const newRound = { roundNum, winner: null, loser: null, tie: true, skiA: a.id, skiB: b.id };
       upd({
         skis: (test.skis || []).map(
-          (s) => s.id === a.id || s.id === b.id ? { ...s, standing: "Tied" } : s
+          (s) => s.id === a.id || s.id === b.id ? { ...s, standing: "Active" } : s
         ),
         rounds: [...test.rounds || [], newRound]
       });
-      pushUndo(snap, "Tie declared");
+      pushUndo(snap, `Tie \u2014 ${a.id} and ${b.id} both advance`);
     }
     function updateRating(skiId, ratings, extra = {}) {
       updSki(skiId, { ratings, ...extra });
@@ -7689,6 +8091,20 @@ Rules:
           const s2 = activeSki.find((s) => s.id === id2);
           if (s1 && s2) selectPair([id1, id2]);
         },
+        onTie: (id1, id2) => {
+          if (id1 && id2) {
+            selectPair([id1, id2]);
+            advance(id1);
+            advance(id2);
+          } else if (id1) {
+            advance(id1);
+          } else {
+            if (currentPair?.length === 2) {
+              advance(currentPair[0]);
+              advance(currentPair[1]);
+            }
+          }
+        },
         onRunnerUp: (id) => markRunnerUp(id),
         onSnowTemp: (val) => {
           const f = useCelsius ? val * 9 / 5 + 32 : val;
@@ -7769,7 +8185,30 @@ Rules:
         textTransform: "uppercase",
         letterSpacing: "0.08em",
         marginBottom: 4
-      } }, "Winner"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800 } }, !isBlind ? winner.product || winner.id : winner.id), !isBlind && winner.id && winner.product && /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, winner.id), !isBlind && winner.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginTop: 2 } }, winner.application), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 6 } }, matchCount > 0 ? `${matchCount} round${matchCount !== 1 ? "s" : ""}` : "", beatCount > 0 ? `, beat ${beatCount} ski${beatCount !== 1 ? "s" : ""}` : ""), test.completedAt && (() => {
+      } }, "Winner"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800 } }, !isBlind ? winner.product || winner.id : winner.id), !isBlind && winner.id && winner.product && /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, winner.id), !isBlind && winner.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginTop: 2 } }, winner.application), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 6 } }, matchCount > 0 ? `${matchCount} round${matchCount !== 1 ? "s" : ""}` : "", beatCount > 0 ? `, beat ${beatCount} ski${beatCount !== 1 ? "s" : ""}` : ""), (() => {
+        const ties = (test.rounds || []).filter((r) => r.tie && (r.skiA === winner.id || r.skiB === winner.id));
+        if (!ties.length) return null;
+        const tieSkis = [...new Set(ties.map((r) => r.skiA === winner.id ? r.skiB : r.skiA))];
+        const tieSkiLabels = tieSkis.map((id) => {
+          if (isBlind) return id;
+          const ski = (test.skis || []).find((s) => s.id === id);
+          return ski?.product ? `${id} (${ski.product.split(" ").slice(0, 2).join(" ")})` : id;
+        });
+        return /* @__PURE__ */ React.createElement("div", { style: {
+          marginTop: 8,
+          padding: "8px 10px",
+          background: "rgba(107,61,8,0.08)",
+          border: "1px solid var(--amber)",
+          borderRadius: 6
+        } }, /* @__PURE__ */ React.createElement("div", { style: {
+          fontSize: 10,
+          fontWeight: 700,
+          color: "var(--amber)",
+          textTransform: "uppercase",
+          letterSpacing: "0.07em",
+          marginBottom: 3
+        } }, "Tied during test \u2014 consider retesting"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-mid)" } }, !isBlind ? winner.product || winner.id : winner.id, " tied with ", tieSkiLabels.join(", "), " \u2014 close enough to warrant a follow-up comparison."));
+      })(), test.completedAt && (() => {
         const c = test.completedConditions;
         const hasAir = c?.airTempF != null;
         const hasSnow2 = c?.snowTempF != null;
@@ -8231,7 +8670,6 @@ Rules:
       const skiSort2 = (a, b) => a.id.localeCompare(b.id, void 0, { numeric: true, sensitivity: "base" });
       const testedIds = rs ? rs.pairedThisRound : /* @__PURE__ */ new Set();
       const elimSkis = allSkis.filter((s) => s.standing === "Eliminated").sort(skiSort2);
-      const tiedSkis = allSkis.filter((s) => s.standing === "Tied").sort(skiSort2);
       const lastRoundFor = (id) => {
         const rounds = test.rounds || [];
         for (let i = rounds.length - 1; i >= 0; i--) {
@@ -8240,9 +8678,14 @@ Rules:
           if (r.winner === id) return { type: "won", round: r.roundNum };
           if (r.loser === id && r.runnerUp) return { type: "2nd", round: r.roundNum };
           if (r.loser === id) return { type: "elim", round: r.roundNum };
+          if (r.tie && (r.skiA === id || r.skiB === id)) {
+            const opponent = r.skiA === id ? r.skiB : r.skiA;
+            return { type: "tie", round: r.roundNum, opponent };
+          }
         }
         return null;
       };
+      const tieHistoryFor = (id) => (test.rounds || []).filter((r) => r.tie && (r.skiA === id || r.skiB === id)).map((r) => ({ round: r.roundNum, opponent: r.skiA === id ? r.skiB : r.skiA }));
       const rowProps = {
         isBlind,
         isGlide,
@@ -8269,6 +8712,7 @@ Rules:
         lookupProductForm,
         onVocabAdd,
         lastRoundFor,
+        tieHistoryFor,
         declareWinner,
         commitDeclareWinner,
         pendingWinner,
@@ -8313,14 +8757,7 @@ Rules:
         letterSpacing: "0.08em",
         textTransform: "uppercase",
         padding: "10px 2px 4px"
-      } }, "Eliminated (", elimSkis.length, ")"), elimSkis.map((ski) => /* @__PURE__ */ React.createElement(TournamentSkiRow, { key: ski.id, ski, status: "elim", dim: true, ...rowProps })), tiedSkis.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
-        fontSize: 10,
-        fontWeight: 700,
-        color: "var(--amber)",
-        letterSpacing: "0.08em",
-        textTransform: "uppercase",
-        padding: "10px 2px 4px"
-      } }, "Tied (", tiedSkis.length, ")"), tiedSkis.map((ski) => /* @__PURE__ */ React.createElement(TournamentSkiRow, { key: ski.id, ski, status: "tied", dim: false, ...rowProps })));
+      } }, "Eliminated (", elimSkis.length, ")"), elimSkis.map((ski) => /* @__PURE__ */ React.createElement(TournamentSkiRow, { key: ski.id, ski, status: "elim", dim: true, ...rowProps })));
     })(), (() => {
       const elimSkis = (test.skis || []).filter((s) => s.standing === "Eliminated");
       if (elimSkis.length < 2) return null;
