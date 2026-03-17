@@ -7198,7 +7198,7 @@ Rules:
       return this.props.children;
     }
   };
-  function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], eventForecast = null, onUpdateEventForecast, onRequestCopy, onGoHome }) {
+  function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], eventForecast = null, onUpdateEventForecast, onRequestCopy, onGoHome, eventSessions = [], currentSessionId, onCopyTestToSession }) {
     const [tab, setTab] = useState(test.category === "glide-out" || test.type === "Glide Out" ? "glideout" : "tournament");
     const [undoStack, setUndoStack] = useState([]);
     const [undoVisible, setUndoVisible] = useState(false);
@@ -7207,6 +7207,7 @@ Rules:
     const [pendingResult, setPendingResult] = useState(null);
     const [loserPair, setLoserPair] = useState(null);
     const [showLoserBracket, setShowLoserBracket] = useState(false);
+    const [copyingInTest, setCopyingInTest] = useState(false);
     const [newId, setNewId] = useState("");
     const [newRater, setNewRater] = useState("");
     const [newProduct, setNewProduct] = useState("");
@@ -7503,7 +7504,19 @@ Rules:
       { id: "results", label: "Results" },
       { id: "notes", label: "Notes" }
     ];
-    return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header no-print" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack, label: "Session", onHome: onGoHome, homeLabel: "Event" }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, copyingInTest && /* @__PURE__ */ React.createElement(
+      CopyTestModal,
+      {
+        test,
+        eventSessions,
+        currentSessionId,
+        onCopy: (destSessionId, copiedTest) => {
+          onCopyTestToSession?.(destSessionId, copiedTest);
+          setCopyingInTest(false);
+        },
+        onClose: () => setCopyingInTest(false)
+      }
+    ), /* @__PURE__ */ React.createElement("div", { className: "view-header no-print" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack, label: "Session", onHome: onGoHome, homeLabel: "Event" }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
       fontSize: 11,
       color: "var(--ink-faint)",
       letterSpacing: "0.06em",
@@ -7513,7 +7526,7 @@ Rules:
       {
         className: "btn-ghost no-print",
         title: "Copy this test to another session",
-        onClick: onRequestCopy,
+        onClick: () => setCopyingInTest(true),
         style: { fontSize: 11, padding: "4px 10px", minHeight: 28 }
       },
       "Copy\u2026"
@@ -8904,7 +8917,7 @@ Rules:
         onUndo: doUndo,
         onDismiss: () => setUndoVisible(false)
       }
-    ));
+    )));
   }
   function SkiEditInline({ ski, vocab, onSave, onCancel, onPhotoSave, teamCode, eventId, category = "glide" }) {
     const [product, setProduct] = useState(ski.product || "");
@@ -9196,8 +9209,11 @@ Rules:
           fleets,
           eventForecast,
           onUpdateEventForecast,
-          onRequestCopy: () => setCopyingTest(test),
-          onGoHome
+          onGoHome,
+          eventSessions,
+          currentSessionId: session.id,
+          onCopyTestToSession,
+          onRequestCopy: null
         }
       ));
     }
