@@ -8053,83 +8053,105 @@ Rules:
         onClick: () => setTab(t.id)
       },
       t.label
-    ))), /* @__PURE__ */ React.createElement("div", { style: { padding: 16, paddingBottom: 80 } }, /* @__PURE__ */ React.createElement(
-      VoiceCommandBar,
-      {
-        skis: test.skis,
-        isGlide,
-        onAdvance: !winner ? ((id) => {
-          const s = activeSki.find((x) => x.id === id);
-          if (!s) return;
-          if (!currentPair && activeSki.length === 2) {
-            const other = activeSki.find((x) => x.id !== id);
-            if (other) selectPair([id, other.id]);
+    ))), /* @__PURE__ */ React.createElement("div", { style: { padding: 16, paddingBottom: 80 } }, (() => {
+      const [vcbOpen, setVcbOpen] = React.useState(false);
+      return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => setVcbOpen((o) => !o),
+          className: "btn-ghost",
+          style: {
+            width: "100%",
+            fontSize: 13,
+            padding: "9px 0",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+            color: "var(--ink-faint)"
           }
-          advance(id);
-        }) : null,
-        onEliminate: !winner ? ((id) => {
-          const s = activeSki.find((x) => x.id === id);
-          if (!s) return;
-          if (!currentPair && activeSki.length === 2) {
-            const other = activeSki.find((x) => x.id !== id);
-            if (other) selectPair([id, other.id]);
-          }
-          eliminate(id);
-        }) : null,
-        onWinner: !winner ? ((id) => declareWinner(id)) : null,
-        onRestore: (id) => restore(id),
-        onRate: (id, { glide, kick }) => {
-          const ski = (test.skis || []).find((x) => x.id === id);
-          if (!ski) return;
-          const r = { ...ski.ratings || {} };
-          if (glide != null) r.glide = glide;
-          if (kick != null) r.kick = kick;
-          updateRating(id, r);
         },
-        onPair: (id1, id2) => {
-          const s1 = activeSki.find((s) => s.id === id1);
-          const s2 = activeSki.find((s) => s.id === id2);
-          if (s1 && s2) selectPair([id1, id2]);
-        },
-        onTie: (id1, id2) => {
-          if (id1 && id2) {
-            selectPair([id1, id2]);
-            advance(id1);
-            advance(id2);
-          } else if (id1) {
-            advance(id1);
-          } else {
-            if (currentPair?.length === 2) {
-              advance(currentPair[0]);
-              advance(currentPair[1]);
+        /* @__PURE__ */ React.createElement(MicIcon, { size: 14 }),
+        "Voice Commands",
+        /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, marginLeft: 2 } }, vcbOpen ? "\u25B2" : "\u25BC")
+      ), vcbOpen && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ React.createElement(
+        VoiceCommandBar,
+        {
+          skis: test.skis,
+          isGlide,
+          onAdvance: !winner ? ((id) => {
+            const s = activeSki.find((x) => x.id === id);
+            if (!s) return;
+            if (!currentPair && activeSki.length === 2) {
+              const other = activeSki.find((x) => x.id !== id);
+              if (other) selectPair([id, other.id]);
             }
-          }
-        },
-        onRunnerUp: (id) => markRunnerUp(id),
-        onSnowTemp: (val) => {
-          const f = useCelsius ? val * 9 / 5 + 32 : val;
-          upd({ snowTemps: [...test.snowTemps || [], { ts: nowStr(), tempF: f }] });
-        },
-        onAirTemp: (val) => {
-          const f = useCelsius ? val * 9 / 5 + 32 : val;
-          upd({ airTemps: [...test.airTemps || [], { ts: nowStr(), tempF: f }] });
-        },
-        onNote: (id, text) => {
-          const ski = (test.skis || []).find((x) => x.id === id);
-          if (!ski) return;
-          const prev = ski.feelNotes || "";
-          updSki(id, { feelNotes: prev ? prev + " \xB7 " + text : text });
-        },
-        onForm: (id, form) => {
-          const ski = (test.skis || []).find((x) => x.id === id);
-          if (!ski) return;
-          updSki(id, { waxForm: form });
-          if (ski.product) rememberProductForm(ski.product, form);
-        },
-        onUndo: undoStack.length > 0 ? doUndo : null,
-        onBlind: test.blindMode ? () => upd({ blindRevealed: !test.blindRevealed }) : null
-      }
-    ), tab === "tournament" && /* @__PURE__ */ React.createElement("div", null, test.blindMode && /* @__PURE__ */ React.createElement("div", { style: {
+            advance(id);
+          }) : null,
+          onEliminate: !winner ? ((id) => {
+            const s = activeSki.find((x) => x.id === id);
+            if (!s) return;
+            if (!currentPair && activeSki.length === 2) {
+              const other = activeSki.find((x) => x.id !== id);
+              if (other) selectPair([id, other.id]);
+            }
+            eliminate(id);
+          }) : null,
+          onWinner: !winner ? ((id) => declareWinner(id)) : null,
+          onRestore: (id) => restore(id),
+          onRate: (id, { glide, kick }) => {
+            const ski = (test.skis || []).find((x) => x.id === id);
+            if (!ski) return;
+            const r = { ...ski.ratings || {} };
+            if (glide != null) r.glide = glide;
+            if (kick != null) r.kick = kick;
+            updateRating(id, r);
+          },
+          onPair: (id1, id2) => {
+            const s1 = activeSki.find((s) => s.id === id1);
+            const s2 = activeSki.find((s) => s.id === id2);
+            if (s1 && s2) selectPair([id1, id2]);
+          },
+          onTie: (id1, id2) => {
+            if (id1 && id2) {
+              selectPair([id1, id2]);
+              advance(id1);
+              advance(id2);
+            } else if (id1) {
+              advance(id1);
+            } else {
+              if (currentPair?.length === 2) {
+                advance(currentPair[0]);
+                advance(currentPair[1]);
+              }
+            }
+          },
+          onRunnerUp: (id) => markRunnerUp(id),
+          onSnowTemp: (val) => {
+            const f = useCelsius ? val * 9 / 5 + 32 : val;
+            upd({ snowTemps: [...test.snowTemps || [], { ts: nowStr(), tempF: f }] });
+          },
+          onAirTemp: (val) => {
+            const f = useCelsius ? val * 9 / 5 + 32 : val;
+            upd({ airTemps: [...test.airTemps || [], { ts: nowStr(), tempF: f }] });
+          },
+          onNote: (id, text) => {
+            const ski = (test.skis || []).find((x) => x.id === id);
+            if (!ski) return;
+            const prev = ski.feelNotes || "";
+            updSki(id, { feelNotes: prev ? prev + " \xB7 " + text : text });
+          },
+          onForm: (id, form) => {
+            const ski = (test.skis || []).find((x) => x.id === id);
+            if (!ski) return;
+            updSki(id, { waxForm: form });
+            if (ski.product) rememberProductForm(ski.product, form);
+          },
+          onUndo: undoStack.length > 0 ? doUndo : null,
+          onBlind: test.blindMode ? () => upd({ blindRevealed: !test.blindRevealed }) : null
+        }
+      )));
+    })(), tab === "tournament" && /* @__PURE__ */ React.createElement("div", null, test.blindMode && /* @__PURE__ */ React.createElement("div", { style: {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
@@ -9910,181 +9932,196 @@ Rules:
     ), /* @__PURE__ */ React.createElement(Hr, null), (session.tests || []).length === 0 && !creatingTest && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "28px 16px", color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(ClipboardIcon, { size: 30, color: "var(--ink-faint)" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 4 } }, "No tests yet"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, lineHeight: 1.5 } }, "Tap + New Test to start a glide or kick tournament, or activate the schedule to auto-create tests.")), (session.tests || []).map((test) => {
       const winner = test.skis?.find((s) => s.standing === "Winner");
       const active = test.skis?.filter((s) => s.standing === "Active") || [];
-      return /* @__PURE__ */ React.createElement("div", { key: test.id, className: "card", style: {
-        marginBottom: 8,
-        overflow: "visible",
-        borderLeft: winner ? "3px solid var(--green)" : active.length > 0 ? "3px solid var(--amber)" : "none"
-      } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, test.name || "Unnamed Test"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 2 } }, test.category, " \xB7 ", test.type || "\u2014", " \xB7 ", (test.skis || []).length, " ski", (test.skis || []).length !== 1 ? "s" : "", Array.isArray(test.testers) && test.testers.length ? ` \xB7 ${test.testers.join(", ")}` : typeof test.testers === "string" && test.testers ? ` \xB7 ${test.testers}` : ""), winner && !test.blindMode && winner.product && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: {
-        width: 5,
-        height: 5,
-        borderRadius: "50%",
-        background: "var(--green)",
-        flexShrink: 0
-      } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "var(--ink-mid)" } }, winner.product), winner.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: winner.waxForm }), winner.application && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, winner.application), test.completedAt && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "\xB7 ", fmtTime(test.completedAt))), winner && (test.blindMode || !winner.product) && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: {
-        width: 5,
-        height: 5,
-        borderRadius: "50%",
-        background: "var(--green)",
-        flexShrink: 0
-      } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "var(--ink-mid)" } }, winner.id, " won"), test.completedAt && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "\xB7 ", fmtTime(test.completedAt))), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, fontSize: 11, color: "var(--amber)" } }, active.length, " ski", active.length !== 1 ? "s" : "", " still active")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } }, winner && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--ink-mid)", fontSize: 9 } }, "Winner"), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--amber)", fontSize: 9 } }, "Active"), test.deadline && /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline, completed: !!test.completedAt }), /* @__PURE__ */ React.createElement(
-        "button",
+      return /* @__PURE__ */ React.createElement(
+        "div",
         {
-          onClick: () => setDeadlinePickerTest(test),
-          className: "btn-ghost",
-          title: "Set deadline",
+          key: test.id,
+          className: "card",
           style: {
-            fontSize: 14,
-            padding: "6px 10px",
-            minHeight: 34,
-            display: "flex",
-            alignItems: "center",
-            gap: 4
-          }
-        },
-        /* @__PURE__ */ React.createElement(
-          "svg",
-          {
-            width: "14",
-            height: "14",
-            viewBox: "0 0 24 24",
-            fill: "none",
-            stroke: "currentColor",
-            strokeWidth: "2",
-            strokeLinecap: "round",
-            strokeLinejoin: "round"
+            marginBottom: 8,
+            overflow: "visible",
+            borderLeft: winner ? "3px solid var(--green)" : active.length > 0 ? "3px solid var(--amber)" : "none",
+            cursor: "pointer"
           },
-          /* @__PURE__ */ React.createElement("circle", { cx: "12", cy: "13", r: "8" }),
-          /* @__PURE__ */ React.createElement("path", { d: "M12 9v4l2 2" }),
-          /* @__PURE__ */ React.createElement("path", { d: "M9 2h6" }),
-          /* @__PURE__ */ React.createElement("path", { d: "M19.5 6.5l-1-1" })
-        )
-      ), /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: () => setActiveTestId(test.id),
-          className: "btn",
-          style: { fontSize: 12, padding: "6px 14px", minHeight: 34 }
-        },
-        "Open"
-      ), /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          title: "Copy test to any session",
           onClick: (e) => {
-            e.stopPropagation();
-            setCopyingTest(test);
-          },
-          className: "btn-ghost",
-          style: { fontSize: 12, padding: "6px 10px", minHeight: 34 }
-        },
-        "Copy"
-      ), confirmDeleteTestId === test.id ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--red)", fontWeight: 600 } }, "Delete?"), /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: () => {
-            upd({ tests: (session.tests || []).filter((t) => t.id !== test.id) });
-            setConfirmDeleteTestId(null);
-          },
-          className: "btn",
-          style: {
-            fontSize: 11,
-            padding: "4px 10px",
-            minHeight: 28,
-            background: "var(--red)",
-            borderColor: "var(--red)",
-            color: "#fff"
+            if (e.target.closest("button")) return;
+            setActiveTestId(test.id);
           }
         },
-        "Yes"
-      ), /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: () => setConfirmDeleteTestId(null),
-          className: "btn-ghost",
-          style: { fontSize: 11, padding: "4px 10px", minHeight: 28 }
-        },
-        "No"
-      )) : /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: () => setConfirmDeleteTestId(test.id),
-          className: "btn-text",
-          style: { fontSize: 20 }
-        },
-        "\xD7"
-      ))), test.notes && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 10px", fontSize: 12, color: "var(--ink-mid)", fontStyle: "italic" } }, test.notes), (() => {
-        const isEmpty = !test.skis?.length;
-        const sourceCandidates = eventSessions.flatMap(
-          (s) => (s.tests || []).filter((t) => t.id !== test.id && t.skis?.length > 0 && (t.category === test.category || !test.category)).map((t) => ({ ...t, _sessName: s.name }))
-        );
-        if (!isEmpty || sourceCandidates.length === 0) return null;
-        if (populatingTestId !== test.id) {
-          return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 10px" } }, /* @__PURE__ */ React.createElement(
+        /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, test.name || "Unnamed Test"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 2 } }, test.category, " \xB7 ", test.type || "\u2014", " \xB7 ", (test.skis || []).length, " ski", (test.skis || []).length !== 1 ? "s" : "", Array.isArray(test.testers) && test.testers.length ? ` \xB7 ${test.testers.join(", ")}` : typeof test.testers === "string" && test.testers ? ` \xB7 ${test.testers}` : ""), winner && !test.blindMode && winner.product && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: {
+          width: 5,
+          height: 5,
+          borderRadius: "50%",
+          background: "var(--green)",
+          flexShrink: 0
+        } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "var(--ink-mid)" } }, winner.product), winner.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: winner.waxForm }), winner.application && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, winner.application), test.completedAt && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "\xB7 ", fmtTime(test.completedAt))), winner && (test.blindMode || !winner.product) && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: {
+          width: 5,
+          height: 5,
+          borderRadius: "50%",
+          background: "var(--green)",
+          flexShrink: 0
+        } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "var(--ink-mid)" } }, winner.id, " won"), test.completedAt && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "\xB7 ", fmtTime(test.completedAt))), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, fontSize: 11, color: "var(--amber)" } }, active.length, " ski", active.length !== 1 ? "s" : "", " still active")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } }, winner && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--ink-mid)", fontSize: 9 } }, "Winner"), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--amber)", fontSize: 9 } }, "Active"), test.deadline && /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline, completed: !!test.completedAt }), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setDeadlinePickerTest(test),
+            className: "btn-ghost",
+            title: "Set deadline",
+            style: {
+              fontSize: 14,
+              padding: "6px 10px",
+              minHeight: 34,
+              display: "flex",
+              alignItems: "center",
+              gap: 4
+            }
+          },
+          /* @__PURE__ */ React.createElement(
+            "svg",
+            {
+              width: "14",
+              height: "14",
+              viewBox: "0 0 24 24",
+              fill: "none",
+              stroke: "currentColor",
+              strokeWidth: "2",
+              strokeLinecap: "round",
+              strokeLinejoin: "round"
+            },
+            /* @__PURE__ */ React.createElement("circle", { cx: "12", cy: "13", r: "8" }),
+            /* @__PURE__ */ React.createElement("path", { d: "M12 9v4l2 2" }),
+            /* @__PURE__ */ React.createElement("path", { d: "M9 2h6" }),
+            /* @__PURE__ */ React.createElement("path", { d: "M19.5 6.5l-1-1" })
+          )
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setActiveTestId(test.id),
+            className: "btn",
+            style: { fontSize: 13, padding: "8px 18px", minHeight: 44 }
+          },
+          "Open"
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            title: "Copy test to any session",
+            onClick: (e) => {
+              e.stopPropagation();
+              setCopyingTest(test);
+            },
+            className: "btn-ghost",
+            style: { fontSize: 12, padding: "6px 10px", minHeight: 34 }
+          },
+          "Copy"
+        ), confirmDeleteTestId === test.id ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--red)", fontWeight: 600 } }, "Delete?"), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              upd({ tests: (session.tests || []).filter((t) => t.id !== test.id) });
+              setConfirmDeleteTestId(null);
+            },
+            className: "btn",
+            style: {
+              fontSize: 11,
+              padding: "4px 10px",
+              minHeight: 28,
+              background: "var(--red)",
+              borderColor: "var(--red)",
+              color: "#fff"
+            }
+          },
+          "Yes"
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setConfirmDeleteTestId(null),
+            className: "btn-ghost",
+            style: { fontSize: 11, padding: "4px 10px", minHeight: 28 }
+          },
+          "No"
+        )) : /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setConfirmDeleteTestId(test.id),
+            className: "btn-text",
+            style: { fontSize: 20 }
+          },
+          "\xD7"
+        ))),
+        test.notes && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 10px", fontSize: 12, color: "var(--ink-mid)", fontStyle: "italic" } }, test.notes),
+        (() => {
+          const isEmpty = !test.skis?.length;
+          const sourceCandidates = eventSessions.flatMap(
+            (s) => (s.tests || []).filter((t) => t.id !== test.id && t.skis?.length > 0 && (t.category === test.category || !test.category)).map((t) => ({ ...t, _sessName: s.name }))
+          );
+          if (!isEmpty || sourceCandidates.length === 0) return null;
+          if (populatingTestId !== test.id) {
+            return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 10px" } }, /* @__PURE__ */ React.createElement(
+              "button",
+              {
+                className: "btn-ghost",
+                style: {
+                  width: "100%",
+                  fontSize: 12,
+                  padding: "7px 0",
+                  color: "var(--ink)",
+                  borderColor: "var(--rule)"
+                },
+                onClick: () => setPopulatingTestId(test.id)
+              },
+              "\u21B3 Populate fleet from another test\u2026"
+            ));
+          }
+          return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 6 } }, "Choose a test to copy fleet from \u2014 products and skis will be imported, results stay clear:"), /* @__PURE__ */ React.createElement("div", { style: {
+            background: "var(--paper-3)",
+            borderRadius: 6,
+            border: "1px solid var(--rule)",
+            maxHeight: 200,
+            overflowY: "auto"
+          } }, sourceCandidates.map((src) => {
+            const catLabel = src.category === "glide-out" ? "Glide Out" : src.category === "kick" ? "Kick" : "Glide";
+            return /* @__PURE__ */ React.createElement(
+              "button",
+              {
+                key: src.id,
+                onClick: () => {
+                  const populated = copyTest(src, "");
+                  const merged = {
+                    ...test,
+                    skis: populated.skis,
+                    glideOutRuns: [],
+                    rounds: [],
+                    completedAt: void 0,
+                    completedConditions: void 0
+                  };
+                  upd({ tests: (session.tests || []).map((t) => t.id === test.id ? merged : t) });
+                  setPopulatingTestId(null);
+                },
+                style: {
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "9px 12px",
+                  background: "none",
+                  border: "none",
+                  borderBottom: "1px solid var(--rule)",
+                  cursor: "pointer"
+                },
+                className: "btn-text"
+              },
+              /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, fontSize: 13 } }, src.name || "Unnamed Test"),
+              /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 1 } }, src._sessName, " \xB7 ", catLabel, src.type ? ` \xB7 ${src.type}` : "", "\xB7 ", (src.skis || []).length, " ski", (src.skis || []).length !== 1 ? "s" : "")
+            );
+          })), /* @__PURE__ */ React.createElement(
             "button",
             {
               className: "btn-ghost",
-              style: {
-                width: "100%",
-                fontSize: 12,
-                padding: "7px 0",
-                color: "var(--ink)",
-                borderColor: "var(--rule)"
-              },
-              onClick: () => setPopulatingTestId(test.id)
+              style: { width: "100%", marginTop: 6, fontSize: 12 },
+              onClick: () => setPopulatingTestId(null)
             },
-            "\u21B3 Populate fleet from another test\u2026"
+            "Cancel"
           ));
-        }
-        return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 6 } }, "Choose a test to copy fleet from \u2014 products and skis will be imported, results stay clear:"), /* @__PURE__ */ React.createElement("div", { style: {
-          background: "var(--paper-3)",
-          borderRadius: 6,
-          border: "1px solid var(--rule)",
-          maxHeight: 200,
-          overflowY: "auto"
-        } }, sourceCandidates.map((src) => {
-          const catLabel = src.category === "glide-out" ? "Glide Out" : src.category === "kick" ? "Kick" : "Glide";
-          return /* @__PURE__ */ React.createElement(
-            "button",
-            {
-              key: src.id,
-              onClick: () => {
-                const populated = copyTest(src, "");
-                const merged = {
-                  ...test,
-                  skis: populated.skis,
-                  glideOutRuns: [],
-                  rounds: [],
-                  completedAt: void 0,
-                  completedConditions: void 0
-                };
-                upd({ tests: (session.tests || []).map((t) => t.id === test.id ? merged : t) });
-                setPopulatingTestId(null);
-              },
-              style: {
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                padding: "9px 12px",
-                background: "none",
-                border: "none",
-                borderBottom: "1px solid var(--rule)",
-                cursor: "pointer"
-              },
-              className: "btn-text"
-            },
-            /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, fontSize: 13 } }, src.name || "Unnamed Test"),
-            /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 1 } }, src._sessName, " \xB7 ", catLabel, src.type ? ` \xB7 ${src.type}` : "", "\xB7 ", (src.skis || []).length, " ski", (src.skis || []).length !== 1 ? "s" : "")
-          );
-        })), /* @__PURE__ */ React.createElement(
-          "button",
-          {
-            className: "btn-ghost",
-            style: { width: "100%", marginTop: 6, fontSize: 12 },
-            onClick: () => setPopulatingTestId(null)
-          },
-          "Cancel"
-        ));
-      })());
+        })()
+      );
     }), creatingTest ? /* @__PURE__ */ React.createElement("div", { style: {
       background: "var(--paper-2)",
       borderRadius: 8,
@@ -10393,61 +10430,70 @@ Rules:
       const tc = (sess.tests || []).length;
       const wc = (sess.tests || []).filter((t) => t.skis?.some((s) => s.standing === "Winner")).length;
       const sessIsEmpty = tc > 0 && (sess.tests || []).every((t) => !t.skis?.length);
-      return /* @__PURE__ */ React.createElement("div", { key: sess.id, className: "card", style: { marginBottom: 8, overflow: "visible" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, sess.name), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 2 } }, tc, " test", tc !== 1 ? "s" : "", " \xB7 ", wc, " winner", wc !== 1 ? "s" : ""), sessIsEmpty && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--blue)", marginTop: 3 } }, "No skis yet \u2014 open to populate fleet")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement(
-        "button",
+      return /* @__PURE__ */ React.createElement(
+        "div",
         {
-          onClick: () => setActiveSessionId(sess.id),
-          className: "btn",
-          style: { fontSize: 12, padding: "6px 14px", minHeight: 34 }
+          key: sess.id,
+          className: "card",
+          style: { marginBottom: 8, overflow: "visible", cursor: "pointer" },
+          onClick: () => setActiveSessionId(sess.id)
         },
-        "Open"
-      ), /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          title: "Duplicate session (copies fleet setup, clears results)",
-          onClick: () => {
-            const copy = copySession(sess, event.sessions || []);
-            upd({ sessions: [...event.sessions || [], copy] });
+        /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, sess.name), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 2 } }, tc, " test", tc !== 1 ? "s" : "", " \xB7 ", wc, " winner", wc !== 1 ? "s" : ""), sessIsEmpty && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--blue)", marginTop: 3 } }, "No skis yet \u2014 open to populate fleet")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setActiveSessionId(sess.id),
+            className: "btn",
+            style: { fontSize: 13, padding: "8px 18px", minHeight: 44 }
           },
-          className: "btn-ghost",
-          style: { fontSize: 12, padding: "6px 10px", minHeight: 34 }
-        },
-        "Copy"
-      ), confirmDeleteSessionId === sess.id ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--red)", fontWeight: 600 } }, "Delete?"), /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: () => {
-            upd({ sessions: (event.sessions || []).filter((s) => s.id !== sess.id) });
-            setConfirmDeleteSessionId(null);
+          "Open"
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            title: "Duplicate session (copies fleet setup, clears results)",
+            onClick: () => {
+              const copy = copySession(sess, event.sessions || []);
+              upd({ sessions: [...event.sessions || [], copy] });
+            },
+            className: "btn-ghost",
+            style: { fontSize: 12, padding: "6px 10px", minHeight: 34 }
           },
-          className: "btn",
-          style: {
-            fontSize: 11,
-            padding: "4px 10px",
-            minHeight: 28,
-            background: "var(--red)",
-            borderColor: "var(--red)",
-            color: "#fff"
-          }
-        },
-        "Yes"
-      ), /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: () => setConfirmDeleteSessionId(null),
-          className: "btn-ghost",
-          style: { fontSize: 11, padding: "4px 10px", minHeight: 28 }
-        },
-        "No"
-      )) : /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: () => setConfirmDeleteSessionId(sess.id),
-          className: "btn-text",
-          style: { fontSize: 20 }
-        },
-        "\xD7"
-      ))));
+          "Copy"
+        ), confirmDeleteSessionId === sess.id ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--red)", fontWeight: 600 } }, "Delete?"), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              upd({ sessions: (event.sessions || []).filter((s) => s.id !== sess.id) });
+              setConfirmDeleteSessionId(null);
+            },
+            className: "btn",
+            style: {
+              fontSize: 11,
+              padding: "4px 10px",
+              minHeight: 28,
+              background: "var(--red)",
+              borderColor: "var(--red)",
+              color: "#fff"
+            }
+          },
+          "Yes"
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setConfirmDeleteSessionId(null),
+            className: "btn-ghost",
+            style: { fontSize: 11, padding: "4px 10px", minHeight: 28 }
+          },
+          "No"
+        )) : /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setConfirmDeleteSessionId(sess.id),
+            className: "btn-text",
+            style: { fontSize: 20 }
+          },
+          "\xD7"
+        )))
+      );
     }), (event.sessions || []).length === 0 && !addingSession && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 16px", color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(SkiIcon, { size: 32, color: "var(--ink-faint)" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 4 } }, "No sessions yet"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, lineHeight: 1.5 } }, "Sessions are testing blocks within a race day \u2014 morning conditions, afternoon conditions, etc.")), !addingSession ? /* @__PURE__ */ React.createElement(
       "button",
       {
@@ -10835,6 +10881,7 @@ Rules:
     const [code, setCode] = useState(getHashTeam() || "");
     const [showHelp, setShowHelp] = useState(false);
     const recents = getRecentTeams();
+    const isFirstTime = recents.length === 0;
     function join(c) {
       const n = normalise(c.trim());
       if (!n) return;
@@ -10850,7 +10897,7 @@ Rules:
       alignItems: "center",
       background: "var(--paper)",
       padding: 24
-    } }, showHelp && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowHelp(false) }), /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 360 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+    } }, showHelp && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowHelp(false) }), /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 360 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
       fontSize: 11,
       fontWeight: 600,
       letterSpacing: "0.12em",
@@ -10863,18 +10910,25 @@ Rules:
         className: "btn-ghost",
         style: { fontSize: 12, padding: "6px 12px", minHeight: 32 }
       },
-      "? How it works"
-    )), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 30, fontWeight: 800, marginBottom: 4 } }, "Wax Testing"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "var(--ink-mid)", marginBottom: 28, lineHeight: 1.5 } }, "Nordic ski wax testing for racing staff."), /* @__PURE__ */ React.createElement(Lbl, null, "Team Code"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 8, lineHeight: 1.5 } }, "Everyone on your team enters the same code to share events and tests live."), /* @__PURE__ */ React.createElement(
+      "How it works"
+    )), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 30, fontWeight: 800, marginBottom: 6, letterSpacing: "-0.01em" } }, "Wax Testing"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "var(--ink-mid)", marginBottom: 28, lineHeight: 1.5 } }, "Nordic ski wax testing for racing staff."), isFirstTime && /* @__PURE__ */ React.createElement("div", { style: {
+      background: "var(--paper-2)",
+      border: "1.5px solid var(--rule)",
+      borderRadius: 8,
+      padding: "12px 14px",
+      marginBottom: 20
+    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 4 } }, "Getting started"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-mid)", lineHeight: 1.6 } }, "Choose a team name \u2014 anything works. Use your club, team, or your own name. Everyone testing with you enters the same name to share results in real time. You can also use it solo.")), /* @__PURE__ */ React.createElement(Lbl, null, "Your team name"), /* @__PURE__ */ React.createElement(
       "input",
       {
         className: "inp mono",
         value: code,
         onChange: (e) => setCode(e.target.value.toUpperCase()),
         onKeyDown: (e) => e.key === "Enter" && join(code),
-        placeholder: "e.g. EAST, CRAFTSBURY",
+        placeholder: "e.g. CRAFTSBURY, EAST, VASA",
+        autoFocus: isFirstTime,
         style: { marginBottom: 8, letterSpacing: "0.08em", fontSize: 18 }
       }
-    ), /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: () => join(code), style: { width: "100%", marginBottom: 24, fontSize: 15 } }, "Join Team \u2192"), recents.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Lbl, null, "Recent"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, recents.map((r) => /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 16, lineHeight: 1.5 } }, "New name? It will be created automatically. Returning? Your events will reload."), /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: () => join(code), style: { width: "100%", marginBottom: 24, fontSize: 15 } }, recents.length > 0 && recents[0] === normalise(code.trim()) ? "Return to team \u2192" : "Enter \u2192"), recents.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Lbl, null, "Recent teams"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, recents.map((r) => /* @__PURE__ */ React.createElement(
       "button",
       {
         key: r,
@@ -11578,6 +11632,7 @@ Rules:
             borderRadius: 6,
             padding: "4px 10px",
             cursor: "pointer",
+            minHeight: 44,
             animation: closing ? "wl-pulse 1.2s infinite" : "none"
           }
         },
@@ -12758,6 +12813,7 @@ Rules:
           border: `1px solid ${C.border}`,
           borderRadius: 6,
           cursor: "pointer",
+          minHeight: 36,
           fontWeight: range === d ? 700 : 400,
           background: range === d ? C.accent : C.card,
           color: range === d ? "#fff" : C.faint
