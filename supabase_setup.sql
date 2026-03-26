@@ -172,3 +172,71 @@ create policy "Public photo delete" on storage.objects
 --
 --   3. Trigger a Netlify redeploy (or push a commit) — build.sh will inject
 --      the credentials into config.js automatically.
+
+
+-- ─── SEED WAX ENRICHMENT ─────────────────────────────────────────────────────
+-- Shared win-condition data for the 207 built-in seed wax products.
+-- Keyed by seed_id (e.g. "seed-0042"). NOT per-team — all teams contribute to
+-- and benefit from this shared knowledge base.
+--
+-- Each row's data JSONB contains:
+--   winCount    integer  — total wins across all teams
+--   winHistory  array    — [{date, event, snowTempF, airTempF, humidity,
+--                            snowType, grooming, category, waxForm}, ...]
+--   tempMinF    number   — expanded temp floor from real-world wins
+--   tempMaxF    number   — expanded temp ceiling from real-world wins
+--   snowTypes   array    — snow types this wax has won in
+--   lastWin     iso      — timestamp of most recent win
+
+create table if not exists waxlab_seed_enrichment (
+  seed_id     text primary key,
+  data        jsonb not null default '{}',
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists waxlab_seed_enrichment_seed_id_idx on waxlab_seed_enrichment (seed_id);
+
+alter table waxlab_seed_enrichment enable row level security;
+
+-- All teams can read shared enrichment data
+create policy "Public read"   on waxlab_seed_enrichment for select using (true);
+-- All teams can contribute win data
+create policy "Public insert" on waxlab_seed_enrichment for insert with check (true);
+create policy "Public update" on waxlab_seed_enrichment for update using (true);
+
+-- Enable realtime so enrichments propagate to connected clients during a live race
+alter publication supabase_realtime add table waxlab_seed_enrichment;
+
+
+-- ─── SHARED SEED CATALOG ─────────────────────────────────────────────────────
+-- Authoritative wax product database managed via the ADMIN dashboard.
+-- All teams read this on join; writes are admin-only by convention
+-- (RLS allows public write since there is no auth system — the ADMIN code
+-- is the access control for the editor UI).
+--
+-- Each row is one wax product.  The seed_id matches the compiled fallback
+-- constant (e.g. "seed-0042") so enrichment data stays linked if a product
+-- is edited.
+--
+-- data JSONB shape:
+--   { id, product, brand, category, waxForm, tempMinF, tempMaxF,
+--     snowTypes[], notes, application, createdAt }
+
+create table if not exists waxlab_seed_catalog (
+  seed_id     text primary key,
+  data        jsonb not null default '{}',
+  version     integer not null default 1,
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists waxlab_seed_catalog_seed_id_idx on waxlab_seed_catalog (seed_id);
+
+alter table waxlab_seed_catalog enable row level security;
+
+create policy "Public read"   on waxlab_seed_catalog for select using (true);
+create policy "Public insert" on waxlab_seed_catalog for insert with check (true);
+create policy "Public update" on waxlab_seed_catalog for update using (true);
+create policy "Public delete" on waxlab_seed_catalog for delete using (true);
+
+-- Realtime: connected clients see catalog updates immediately
+alter publication supabase_realtime add table waxlab_seed_catalog;

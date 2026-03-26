@@ -1,6 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"><meta name="apple-mobile-web-app-capable" content="yes"><title>WaxLab</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"><script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script><script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script><script>window.WAXLAB_CONFIG={};</script></head><body><div id="root"></div><script>import React, { useState, useEffect, useCallback, useRef } from "react";
-import ReactDOM from "react-dom/client";
-const SUPABASE_URL = window.WAXLAB_CONFIG?.SUPABASE_URL || "YOUR_SUPABASE_URL";
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"><meta name="apple-mobile-web-app-capable" content="yes"><title>WaxLab</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"><script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script><script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script><script>window.WAXLAB_CONFIG={};</script></head><body><div id="root"></div><script>const SUPABASE_URL = window.WAXLAB_CONFIG?.SUPABASE_URL || "YOUR_SUPABASE_URL";
 const SUPABASE_ANON_KEY = window.WAXLAB_CONFIG?.SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY";
 const GOOGLE_CLIENT_ID = window.WAXLAB_CONFIG?.GOOGLE_CLIENT_ID || "";
 const supabaseConfigured = SUPABASE_URL !== "YOUR_SUPABASE_URL" && SUPABASE_URL !== "";
@@ -510,25 +508,223 @@ async function saveCatalog(teamCode, entries) {
 async function bgSyncCatalog(teamCode, setCatalog) {
   if (!db) return;
   try {
-    const { data, error } = await db.from("waxlab_catalog").select("data").eq("team_code", teamCode).single();
-    if (error || !data?.data) return;
-    const remote = data.data;
+    const [catResult, enrichResult] = await Promise.all([
+      db.from("waxlab_catalog").select("data").eq("team_code", teamCode).single(),
+      loadSeedEnrichments()
+    ]);
     const local = lsGet(`waxlab:catalog:${teamCode}`) || [];
     const localMap = Object.fromEntries(local.map((e) => [e.id, e]));
     let changed = false;
-    remote.forEach((e) => {
-      if (!localMap[e.id]) {
-        localMap[e.id] = e;
+    if (!catResult.error && catResult.data?.data) {
+      catResult.data.data.forEach((e) => {
+        if (!localMap[e.id]) {
+          localMap[e.id] = e;
+          changed = true;
+        }
+      });
+    }
+    const enrichments = enrichResult || {};
+    const activeSeed = lsGet(REMOTE_SEED_KEY) || WAX_SEED_CATALOG;
+    if (Object.keys(enrichments).length > 0) {
+      activeSeed.forEach((seedEntry) => {
+        const enr = enrichments[seedEntry.id];
+        if (!enr) return;
+        localMap[seedEntry.id] = {
+          ...seedEntry,
+          winCount: enr.winCount || 0,
+          winHistory: enr.winHistory || [],
+          snowTypes: [.../* @__PURE__ */ new Set([...seedEntry.snowTypes || [], ...enr.snowTypes || []])],
+          tempMinF: enr.tempMinF != null && (seedEntry.tempMinF == null || enr.tempMinF < seedEntry.tempMinF) ? enr.tempMinF : seedEntry.tempMinF,
+          tempMaxF: enr.tempMaxF != null && (seedEntry.tempMaxF == null || enr.tempMaxF > seedEntry.tempMaxF) ? enr.tempMaxF : seedEntry.tempMaxF,
+          lastWin: enr.lastWin || null
+        };
         changed = true;
-      }
-    });
-    if (changed) {
+      });
+    }
+    if (changed || Object.keys(enrichments).length > 0) {
       const merged = Object.values(localMap);
       lsSet(`waxlab:catalog:${teamCode}`, merged);
       setCatalog(merged);
     }
   } catch (e) {
     console.warn("bgSyncCatalog:", e.message);
+  }
+}
+const REMOTE_SEED_KEY = "waxlab:remoteSeed";
+const REMOTE_SEED_VER = "waxlab:remoteSeedVersion";
+async function loadRemoteSeedCatalog() {
+  if (db) {
+    try {
+      const { data, error } = await db.from("waxlab_seed_catalog").select("seed_id,data,version").order("seed_id");
+      if (!error && data?.length > 0) {
+        const entries = data.map((r) => ({ ...r.data, seed_id: r.seed_id, _seed: true, _version: r.version }));
+        const versionSum = data.reduce((s, r) => s + (r.version || 0), 0);
+        lsSet(REMOTE_SEED_KEY, entries);
+        lsSet(REMOTE_SEED_VER, versionSum);
+        return entries;
+      }
+    } catch (e) {
+      console.warn("loadRemoteSeedCatalog:", e.message);
+    }
+  }
+  const cached = lsGet(REMOTE_SEED_KEY);
+  if (cached?.length > 0) return cached;
+  return WAX_SEED_CATALOG;
+}
+async function saveRemoteSeedEntry(entry) {
+  if (!db) throw new Error("Supabase not connected");
+  const seedId = entry.id || entry.seed_id || `seed-${Date.now()}`;
+  const version = (entry._version || 0) + 1;
+  const { _seed, _version, seed_id, winCount, winHistory, lastWin, ...data } = entry;
+  data.id = seedId;
+  const { error } = await db.from("waxlab_seed_catalog").upsert(
+    { seed_id: seedId, data, version, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
+    { onConflict: "seed_id" }
+  );
+  if (error) throw error;
+  return { ...entry, _version: version };
+}
+async function deleteRemoteSeedEntry(seedId) {
+  if (!db) throw new Error("Supabase not connected");
+  const { error } = await db.from("waxlab_seed_catalog").delete().eq("seed_id", seedId);
+  if (error) throw error;
+}
+async function getActiveSeedCatalog() {
+  return loadRemoteSeedCatalog();
+}
+async function saveSeedEnrichment(seedId, patch) {
+  const cached = lsGet(`waxlab:seedEnrichments`) || {};
+  const prev = cached[seedId] || { winCount: 0, winHistory: [], tempMinF: null, tempMaxF: null, snowTypes: [] };
+  cached[seedId] = {
+    ...prev,
+    winCount: (prev.winCount || 0) + 1,
+    winHistory: [...prev.winHistory || [], ...patch.winHistory || []],
+    snowTypes: [.../* @__PURE__ */ new Set([...prev.snowTypes || [], ...patch.snowTypes || []])],
+    tempMinF: prev.tempMinF != null && patch.tempMinF != null ? Math.min(prev.tempMinF, patch.tempMinF) : patch.tempMinF ?? prev.tempMinF,
+    tempMaxF: prev.tempMaxF != null && patch.tempMaxF != null ? Math.max(prev.tempMaxF, patch.tempMaxF) : patch.tempMaxF ?? prev.tempMaxF,
+    lastWin: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  lsSet(`waxlab:seedEnrichments`, cached);
+  if (!db) return;
+  try {
+    const { data: existing } = await db.from("waxlab_seed_enrichment").select("data").eq("seed_id", seedId).single().catch(() => ({ data: null }));
+    const prev2 = existing?.data || { winCount: 0, winHistory: [], tempMinF: null, tempMaxF: null, snowTypes: [] };
+    const merged = {
+      ...prev2,
+      ...patch,
+      winCount: (prev2.winCount || 0) + 1,
+      winHistory: [...prev2.winHistory || [], ...patch.winHistory || []],
+      snowTypes: [.../* @__PURE__ */ new Set([...prev2.snowTypes || [], ...patch.snowTypes || []])],
+      tempMinF: prev2.tempMinF != null && patch.tempMinF != null ? Math.min(prev2.tempMinF, patch.tempMinF) : patch.tempMinF ?? prev2.tempMinF,
+      tempMaxF: prev2.tempMaxF != null && patch.tempMaxF != null ? Math.max(prev2.tempMaxF, patch.tempMaxF) : patch.tempMaxF ?? prev2.tempMaxF,
+      lastWin: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    await db.from("waxlab_seed_enrichment").upsert(
+      { seed_id: seedId, data: merged, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
+      { onConflict: "seed_id" }
+    );
+  } catch (e) {
+    console.warn("saveSeedEnrichment:", e.message);
+  }
+}
+async function loadSeedEnrichments() {
+  if (!db) return {};
+  try {
+    const { data, error } = await db.from("waxlab_seed_enrichment").select("seed_id,data");
+    if (error || !data) return {};
+    return Object.fromEntries(data.map((r) => [r.seed_id, r.data]));
+  } catch (e) {
+    return {};
+  }
+}
+function enrichCatalogFromWin({ ski, test, session, event, catalog, teamCode, onSave }) {
+  if (!ski?.product?.trim()) return;
+  const product = ski.product.trim();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const sessSnow = (session?.snowTemps || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  const testSnow = (test?.snowTemps || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  const evSnow = (event?.snowTemps || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  const evAir = (event?.airTemps || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  const sessWx = session?.weather || {};
+  const evWx = event?.weather || {};
+  const snowTempF = testSnow[0]?.tempF ?? sessSnow[0]?.tempF ?? evSnow[0]?.tempF ?? null;
+  const airTempF = sessWx.airTempF ?? evWx.airTempF ?? evAir[0]?.tempF ?? null;
+  const humidity = sessWx.humidity ?? evWx.humidity ?? null;
+  const snowType = sessWx.snowType ?? evWx.snowType ?? null;
+  const grooming = sessWx.grooming ?? evWx.grooming ?? null;
+  const eventName = event?.name ?? null;
+  const winRecord = {
+    date: now.slice(0, 10),
+    event: eventName,
+    snowTempF,
+    airTempF,
+    humidity,
+    snowType,
+    grooming,
+    category: test?.category || null,
+    waxForm: ski?.waxForm || null
+  };
+  const snowF = snowTempF ?? airTempF;
+  const winMin = snowF != null ? Math.round(snowF - 2) : null;
+  const winMax = snowF != null ? Math.round(snowF + 2) : null;
+  const newTypes = snowType ? [snowType] : [];
+  const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normTgt = norm(product);
+  const all = catalog || [];
+  let seedMatch = all.find((e) => e._seed && norm(e.product) === normTgt);
+  if (!seedMatch) seedMatch = all.find((e) => e._seed && (norm(e.product).includes(normTgt) || normTgt.includes(norm(e.product))));
+  let customMatch = !seedMatch && all.find((e) => !e._seed && norm(e.product) === normTgt);
+  if (!customMatch && !seedMatch) customMatch = all.find((e) => !e._seed && (norm(e.product).includes(normTgt) || normTgt.includes(norm(e.product))));
+  if (seedMatch) {
+    const patch = {
+      winHistory: [winRecord],
+      snowTypes: newTypes,
+      tempMinF: winMin,
+      tempMaxF: winMax
+    };
+    saveSeedEnrichment(seedMatch.id, patch);
+    const enriched = {
+      ...seedMatch,
+      winCount: (seedMatch.winCount || 0) + 1,
+      winHistory: [...seedMatch.winHistory || [], winRecord],
+      snowTypes: [.../* @__PURE__ */ new Set([...seedMatch.snowTypes || [], ...newTypes])],
+      tempMinF: winMin != null && (seedMatch.tempMinF == null || winMin < seedMatch.tempMinF) ? winMin : seedMatch.tempMinF,
+      tempMaxF: winMax != null && (seedMatch.tempMaxF == null || winMax > seedMatch.tempMaxF) ? winMax : seedMatch.tempMaxF,
+      lastWin: now
+    };
+    onSave(all.map((e) => e.id === seedMatch.id ? enriched : e));
+  } else if (customMatch) {
+    const prevMin = customMatch.tempMinF != null ? Number(customMatch.tempMinF) : null;
+    const prevMax = customMatch.tempMaxF != null ? Number(customMatch.tempMaxF) : null;
+    const enriched = {
+      ...customMatch,
+      tempMinF: winMin != null && (prevMin == null || winMin < prevMin) ? winMin : prevMin,
+      tempMaxF: winMax != null && (prevMax == null || winMax > prevMax) ? winMax : prevMax,
+      snowTypes: [.../* @__PURE__ */ new Set([...customMatch.snowTypes || [], ...newTypes])],
+      winCount: (customMatch.winCount || 0) + 1,
+      winHistory: [...customMatch.winHistory || [], winRecord],
+      lastWin: now
+    };
+    const newCatalog = all.map((e) => e.id === customMatch.id ? enriched : e);
+    onSave(newCatalog);
+  } else {
+    const newEntry = {
+      id: `team-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      product,
+      application: ski.application || "",
+      category: test?.category || "",
+      waxForm: ski?.waxForm || "",
+      tempMinF: winMin ?? "",
+      tempMaxF: winMax ?? "",
+      snowTypes: newTypes,
+      notes: "",
+      winCount: 1,
+      winHistory: [winRecord],
+      lastWin: now,
+      createdAt: now,
+      _fromWin: true
+    };
+    onSave([...all, newEntry]);
   }
 }
 function subscribeToTeam(teamCode, onEventChange, onVocabChange, onFleetChange, onCatalogChange) {
@@ -9031,6 +9227,245 @@ function PredictPanel({ allEvents, sessionWeather, useCelsius }) {
     border: "1px solid var(--rule)"
   } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, r.product), r.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-mid)", marginTop: 1 } }, r.application), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 3 } }, r.category, " \xB7 ", r.eventName, r.standing === "Runner-Up" ? " \xB7 2nd place" : "", r.airF != null ? ` \xB7 air ${dispTemp(r.airF, useCelsius)}` : "", r.snowF != null ? ` \xB7 snow ${dispTemp(r.snowF, useCelsius)}` : "")), r.comp != null && /* @__PURE__ */ React.createElement(RatingBadge, { score: r.comp, max: r.max })))))));
 }
+function WaxRecommendPanel({ allEvents, session, event, useCelsius, catalog }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState(null);
+  function gatherConditions() {
+    const sessSnow = (session?.snowTemps || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+    const testSnow = (session?.tests || []).flatMap((t) => t.snowTemps || []).sort((a, b) => new Date(b.ts) - new Date(a.ts));
+    const evSnow = (event?.snowTemps || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+    const evAir = (event?.airTemps || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
+    const snowTempF = sessSnow[0]?.tempF ?? testSnow[0]?.tempF ?? evSnow[0]?.tempF ?? null;
+    const sessWx = session?.weather || {};
+    const evWx = event?.weather || {};
+    const airTempF = sessWx.airTempF ?? evWx.airTempF ?? evAir[0]?.tempF ?? null;
+    const humidity = sessWx.humidity ?? evWx.humidity ?? null;
+    const snowType = sessWx.snowType ?? evWx.snowType ?? null;
+    const grooming = sessWx.grooming ?? evWx.grooming ?? null;
+    const sky = sessWx.sky ?? evWx.sky ?? null;
+    const windMph = sessWx.windMph ?? evWx.windMph ?? null;
+    const trailNotes = sessWx.trailNotes ?? evWx.trailNotes ?? null;
+    const location = event?.location ?? null;
+    return { snowTempF, airTempF, humidity, snowType, grooming, sky, windMph, trailNotes, location };
+  }
+  function getPastWinners(conds2) {
+    if (!conds2.snowTempF && !conds2.airTempF) return [];
+    const ref = conds2.snowTempF ?? conds2.airTempF;
+    const wins = [];
+    (allEvents || []).forEach((ev) => {
+      (ev.sessions || []).forEach((sess) => {
+        (sess.tests || []).forEach((test) => {
+          const testSnow = (test.snowTemps || []).slice(-1)[0]?.tempF ?? (sess.snowTemps || []).slice(-1)[0]?.tempF ?? ev.weather?.airTempF ?? null;
+          if (testSnow == null) return;
+          if (Math.abs(testSnow - ref) > 15) return;
+          (test.skis || []).filter((s) => s.standing === "Winner" || s.standing === "Runner-Up").forEach((ski) => {
+            if (!ski.product) return;
+            wins.push({
+              product: ski.product,
+              category: test.category,
+              standing: ski.standing,
+              tempF: testSnow,
+              event: ev.name
+            });
+          });
+        });
+      });
+    });
+    return wins.slice(0, 15);
+  }
+  function buildCatalogSummary(conds2) {
+    const all = catalog?.length > 0 ? catalog : WAX_SEED_CATALOG;
+    const snowF = conds2.snowTempF ?? conds2.airTempF;
+    const filtered = snowF != null ? all.filter((e) => {
+      const minF = typeof e.tempMinF === "number" ? e.tempMinF : -999;
+      const maxF = typeof e.tempMaxF === "number" ? e.tempMaxF : 999;
+      return maxF >= snowF - 25 && minF <= snowF + 25;
+    }) : all;
+    return filtered.map(
+      (e) => `${e.product}|${e.category}|${e.waxForm}|${e.tempMinF}\u2013${e.tempMaxF}\xB0F|${e.snowTypes?.join(",") || ""}|${e.notes?.replace(/\[Caldwell\] ?/, "").slice(0, 80) || ""}`
+    ).join("\n");
+  }
+  async function fetchRecommendations() {
+    setLoading(true);
+    setErr(null);
+    setResult(null);
+    const conds2 = gatherConditions();
+    const pastWins = getPastWinners(conds2);
+    const catalogSummary = buildCatalogSummary(conds2);
+    const fmtT = (f, label) => {
+      if (f == null) return null;
+      const c = Math.round((f - 32) * 5 / 9);
+      return `${label}: ${f}\xB0F (${c}\xB0C)`;
+    };
+    const condLines = [
+      fmtT(conds2.snowTempF, "Snow temp"),
+      fmtT(conds2.airTempF, "Air temp"),
+      conds2.humidity != null ? `Humidity: ${conds2.humidity}%` : null,
+      conds2.snowType ? `Snow type: ${conds2.snowType}` : null,
+      conds2.grooming ? `Grooming/snow age: ${conds2.grooming}` : null,
+      conds2.sky ? `Sky: ${conds2.sky}` : null,
+      conds2.windMph != null ? `Wind: ${conds2.windMph} mph` : null,
+      conds2.trailNotes ? `Notes: ${conds2.trailNotes}` : null,
+      conds2.location ? `Location: ${conds2.location}` : null
+    ].filter(Boolean);
+    if (condLines.length === 0) {
+      setErr("No conditions logged yet. Log a snow temp, import weather, or fill in the Conditions tab first.");
+      setLoading(false);
+      return;
+    }
+    const pastWinStr = pastWins.length ? "\n\nPAST TEST WINNERS IN SIMILAR CONDITIONS (this team's data):\n" + pastWins.map((w) => `- ${w.product} (${w.category}, ${w.standing}, ~${w.tempF}\xB0F, ${w.event})`).join("\n") : "";
+    const prompt = `You are an expert Nordic ski wax technician. Recommend wax for the following race/training conditions from the catalog provided. Return ONLY valid JSON, no markdown, no preamble.
+
+CURRENT CONDITIONS:
+${condLines.join("\n")}${pastWinStr}
+
+AVAILABLE WAX CATALOG (format: product|category|form|tempRange|snowTypes|notes):
+${catalogSummary}
+
+Return this exact JSON structure:
+{
+  "glide": [
+    {"product": "...", "reason": "...", "priority": "primary|alternate|test"},
+    {"product": "...", "reason": "...", "priority": "primary|alternate|test"}
+  ],
+  "kick": [
+    {"product": "...", "reason": "...", "priority": "primary|alternate|test"},
+    {"product": "...", "reason": "...", "priority": "primary|alternate|test"}
+  ],
+  "layering": "Brief note on application order or layering strategy if relevant, else null",
+  "flags": "Any important condition flags (icing risk, humidity warning, etc.) or null"
+}
+
+Rules:
+- Recommend only products that appear in the catalog above (exact product names).
+- Give 2\u20133 glide options and 2\u20133 kick options. If conditions clearly favor klister, put klister waxes in kick.
+- "primary" = best match, "alternate" = worth testing, "test" = worth including in bracket.
+- Reasons must be specific to the conditions (temp, snow type, humidity). Max 15 words each.
+- If past winner data is provided, weight those products higher when within temp range.
+- If conditions are above 32\xB0F or snow type is spring/wet/granular, include klister in kick.`;
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 800,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data = await res.json();
+      const raw = (data.content || []).map((b) => b.text || "").join("").trim().replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+      const parsed = JSON.parse(raw);
+      if (!parsed.glide && !parsed.kick) throw new Error("Unexpected response shape");
+      setResult({ ...parsed, conditions: condLines });
+    } catch (e) {
+      setErr("Could not get recommendations. Check your connection and try again.");
+      console.error("WaxRecommend:", e);
+    }
+    setLoading(false);
+  }
+  const conds = gatherConditions();
+  const hasConditions = !!(conds.snowTempF || conds.airTempF || conds.snowType);
+  const priorityColor = (p) => p === "primary" ? "var(--green)" : p === "alternate" ? "var(--amber)" : "var(--ink-faint)";
+  const priorityLabel = (p) => p === "primary" ? "Primary" : p === "alternate" ? "Alternate" : "Test";
+  return /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => {
+        setOpen((o) => !o);
+        if (!open && !result) fetchRecommendations();
+      },
+      className: "btn-ghost",
+      style: { width: "100%", fontSize: 13, padding: "10px 0", fontWeight: 600 }
+    },
+    /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement(ChevronIcon, { size: 13, color: "currentColor", up: open }), open ? "Hide AI Wax Suggestions" : "AI Wax Suggestions")
+  ), open && /* @__PURE__ */ React.createElement("div", { style: {
+    marginTop: 8,
+    padding: "14px",
+    background: "var(--paper-2)",
+    borderRadius: 8,
+    border: "1px solid var(--rule)"
+  } }, result?.conditions?.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+    marginBottom: 10,
+    padding: "8px 10px",
+    background: "var(--paper)",
+    borderRadius: 6,
+    border: "1px solid var(--rule)"
+  } }, /* @__PURE__ */ React.createElement("div", { className: "lbl", style: { marginBottom: 4 } }, "Conditions used"), result.conditions.map((c, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "mono", style: { fontSize: 10, color: "var(--ink-mid)", lineHeight: 1.7 } }, c))), loading && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "20px 0", color: "var(--ink-faint)", fontSize: 13 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    width: 20,
+    height: 20,
+    border: "2px solid var(--rule)",
+    borderTopColor: "var(--ink)",
+    borderRadius: "50%",
+    animation: "spin 0.8s linear infinite",
+    margin: "0 auto 8px"
+  } }), "Analyzing conditions\u2026"), err && !loading && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--red)", lineHeight: 1.5, marginBottom: 10 } }, err), result && !loading && /* @__PURE__ */ React.createElement("div", null, result.flags && /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 12,
+    color: "var(--amber)",
+    background: "var(--paper)",
+    borderRadius: 6,
+    padding: "8px 10px",
+    marginBottom: 10,
+    lineHeight: 1.5,
+    border: "1px solid var(--rule)"
+  } }, "\u26A0 ", result.flags), result.glide?.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { className: "lbl", style: { marginBottom: 6 } }, "Glide"), result.glide.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: "9px 10px",
+    background: "var(--paper)",
+    borderRadius: 6,
+    marginBottom: 4,
+    border: "1px solid var(--rule)"
+  } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: "var(--ink)" } }, r.product), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-mid)", marginTop: 2, lineHeight: 1.5 } }, r.reason)), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+    fontSize: 9,
+    fontWeight: 700,
+    padding: "2px 7px",
+    borderRadius: 4,
+    border: `1px solid ${priorityColor(r.priority)}`,
+    color: priorityColor(r.priority),
+    flexShrink: 0,
+    marginTop: 2
+  } }, priorityLabel(r.priority))))), result.kick?.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { className: "lbl", style: { marginBottom: 6 } }, "Kick / Klister"), result.kick.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: "9px 10px",
+    background: "var(--paper)",
+    borderRadius: 6,
+    marginBottom: 4,
+    border: "1px solid var(--rule)"
+  } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: "var(--ink)" } }, r.product), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-mid)", marginTop: 2, lineHeight: 1.5 } }, r.reason)), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+    fontSize: 9,
+    fontWeight: 700,
+    padding: "2px 7px",
+    borderRadius: 4,
+    border: `1px solid ${priorityColor(r.priority)}`,
+    color: priorityColor(r.priority),
+    flexShrink: 0,
+    marginTop: 2
+  } }, priorityLabel(r.priority))))), result.layering && /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 12,
+    color: "var(--ink-mid)",
+    lineHeight: 1.6,
+    padding: "8px 10px",
+    background: "var(--paper)",
+    borderRadius: 6,
+    border: "1px solid var(--rule)",
+    marginBottom: 10
+  } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600, color: "var(--ink)" } }, "Layering: "), result.layering), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: fetchRecommendations,
+      className: "btn-ghost",
+      style: { width: "100%", fontSize: 12, padding: "8px 0", color: "var(--ink-mid)" }
+    },
+    "Refresh suggestions"
+  )), !hasConditions && !loading && !result && !err && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-faint)", lineHeight: 1.6 } }, "Log a snow temp or import weather above to get suggestions.")));
+}
 function ForecastPanel({ event, onUpdate, useCelsius }) {
   const [expanded, setExpanded] = useState(true);
   const [fetching, setFetching] = useState(false);
@@ -9967,7 +10402,7 @@ function buildSheets(event) {
         });
       }
       if ((test.rounds || []).length > 0) {
-        let flushRound = function() {
+        let flushRound2 = function() {
           if (!cur.length) return;
           const survivorsAtStart = [...allSkiIds].filter((id) => !elimSoFar.has(id));
           const appeared = /* @__PURE__ */ new Set();
@@ -9983,6 +10418,7 @@ function buildSheets(event) {
           cur = [];
           seenThis = /* @__PURE__ */ new Set();
         };
+        var flushRound = flushRound2;
         const allSkiIds = new Set((test.skis || []).map((s) => s.id));
         const trueRounds = [];
         let cur = [], seenThis = /* @__PURE__ */ new Set();
@@ -9991,11 +10427,11 @@ function buildSheets(event) {
           const a = m.skiA || m.winner || null;
           const b = m.skiB || m.loser || null;
           const pts = [a, b].filter(Boolean);
-          if (pts.some((id) => seenThis.has(id)) && cur.length) flushRound();
+          if (pts.some((id) => seenThis.has(id)) && cur.length) flushRound2();
           cur.push({ ...m, skiA: a, skiB: b });
           pts.forEach((id) => seenThis.add(id));
         });
-        flushRound();
+        flushRound2();
         trueRounds.forEach((tr, ri) => {
           tr.byes.forEach((id) => {
             bracket.push([
@@ -11343,19 +11779,20 @@ function TournamentSkiRow({
     const raters = test.testers || [];
     const useMulti = !isGlide && raters.length > 0;
     if (useMulti) {
-      let getRaterScore = function(rater) {
+      let getRaterScore2 = function(rater) {
         return scores.find((r) => r.rater === rater) || { rater, kick: null, glide: null };
-      }, setRaterField = function(rater, field, val) {
-        const updated = [...scores.filter((r) => r.rater !== rater), { ...getRaterScore(rater), [field]: val }];
+      }, setRaterField2 = function(rater, field, val) {
+        const updated = [...scores.filter((r) => r.rater !== rater), { ...getRaterScore2(rater), [field]: val }];
         const derived = deriveRatings(updated);
         updateRating(ski.id, derived, { raterScores: updated });
       };
+      var getRaterScore = getRaterScore2, setRaterField = setRaterField2;
       const scores = ski.raterScores || [];
       const avgKick = ski.ratings?.kick ?? null;
       const avgGlide = ski.ratings?.glide ?? null;
       const avgComp = avgKick != null && avgGlide != null ? Math.round((avgKick + avgGlide) * 10) / 10 : null;
       return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 12px 12px", borderTop: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, raters.map((rater) => {
-        const rs2 = getRaterScore(rater);
+        const rs2 = getRaterScore2(rater);
         return /* @__PURE__ */ React.createElement("div", { key: rater, style: {
           marginBottom: 10,
           paddingBottom: 10,
@@ -11374,7 +11811,7 @@ function TournamentSkiRow({
             min: 1,
             max: 10,
             value: rs2.kick ?? 5,
-            onChange: (e) => setRaterField(rater, "kick", Number(e.target.value)),
+            onChange: (e) => setRaterField2(rater, "kick", Number(e.target.value)),
             style: { flex: 1 }
           }
         ), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
@@ -11390,7 +11827,7 @@ function TournamentSkiRow({
             min: 1,
             max: 10,
             value: rs2.glide ?? 5,
-            onChange: (e) => setRaterField(rater, "glide", Number(e.target.value)),
+            onChange: (e) => setRaterField2(rater, "glide", Number(e.target.value)),
             style: { flex: 1 }
           }
         ), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
@@ -11545,7 +11982,7 @@ class TestViewErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
-function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], eventForecast = null, onUpdateEventForecast, onRequestCopy, onGoHome, eventSessions = [], currentSessionId, onCopyTestToSession }) {
+function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], eventForecast = null, onUpdateEventForecast, onRequestCopy, onGoHome, eventSessions = [], currentSessionId, onCopyTestToSession, catalog = [], onCatalogSave, session = {}, event = {} }) {
   const [tab, setTab] = useState(test.category === "glide-out" || test.type === "Glide Out" ? "glideout" : "tournament");
   const [undoStack, setUndoStack] = useState([]);
   const [undoVisible, setUndoVisible] = useState(false);
@@ -11557,6 +11994,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
   const [copyingInTest, setCopyingInTest] = useState(false);
   const [pendingWinner, setPendingWinner] = useState(null);
   const [vcbOpen, setVcbOpen] = useState(false);
+  const [catalogToast, setCatalogToast] = useState(false);
   const [newId, setNewId] = useState("");
   const [newRater, setNewRater] = useState("");
   const [newProduct, setNewProduct] = useState("");
@@ -11754,6 +12192,20 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       ...completedConditions ? { completedConditions } : {}
     });
     pushUndo(snap, "Winner declared");
+    const winnerSki = (test.skis || []).find((s) => s.id === skiId);
+    if (winnerSki && onCatalogSave) {
+      enrichCatalogFromWin({
+        ski: winnerSki,
+        test,
+        session,
+        event,
+        catalog,
+        teamCode,
+        onSave: onCatalogSave
+      });
+      setCatalogToast(true);
+      setTimeout(() => setCatalogToast(false), 2500);
+    }
   }
   function markRunnerUp(skiId) {
     if (!currentPair) return;
@@ -13404,7 +13856,22 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       rows: 5,
       mic: true
     }
-  ))), undoVisible && undoStack.length > 0 && /* @__PURE__ */ React.createElement(
+  ))), catalogToast && /* @__PURE__ */ React.createElement("div", { style: {
+    position: "fixed",
+    bottom: 72,
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: "var(--green)",
+    color: "#fff",
+    padding: "10px 18px",
+    borderRadius: 10,
+    fontSize: 13,
+    fontWeight: 600,
+    zIndex: 1e3,
+    whiteSpace: "nowrap",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+    pointerEvents: "none"
+  } }, "\u2713 Catalog updated"), undoVisible && undoStack.length > 0 && /* @__PURE__ */ React.createElement(
     UndoToast,
     {
       message: undoStack[0].label,
@@ -13661,7 +14128,7 @@ function CopyTestModal({ test, eventSessions = [], currentSessionId, onCopy, onC
     ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: doConfirm }, "Copy \u2192"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: onClose }, "Cancel")))
   );
 }
-function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], allEvents = [], onPromoteEventWeather, activeTestId, onSetActiveTest, eventForecast = null, onUpdateEventForecast, eventSessions = [], onCopyTestToSession, onGoHome }) {
+function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], allEvents = [], onPromoteEventWeather, activeTestId, onSetActiveTest, eventForecast = null, onUpdateEventForecast, eventSessions = [], onCopyTestToSession, onGoHome, catalog = [], onCatalogSave, event = {} }) {
   const [tab, setTab] = useState("tests");
   const setActiveTestId = onSetActiveTest || (() => {
   });
@@ -13707,6 +14174,10 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
         eventSessions,
         currentSessionId: session.id,
         onCopyTestToSession,
+        catalog,
+        onCatalogSave,
+        session,
+        event,
         onRequestCopy: null
       }
     ));
@@ -14095,6 +14566,15 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
       sessionWeather: session.weather,
       useCelsius
     }
+  ), /* @__PURE__ */ React.createElement(
+    WaxRecommendPanel,
+    {
+      allEvents,
+      session,
+      event,
+      useCelsius,
+      catalog
+    }
   )), tab === "snowtemps" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: {
     background: "var(--paper-2)",
     borderRadius: 8,
@@ -14139,7 +14619,7 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
     } }, r.kind))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 12, color: "var(--ink-faint)" } }, r.testName), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)" } }, fmtTime(r.ts))))));
   })()))));
 }
-function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd, allEvents, useCelsius, onUnitToggle, teamCode, fleets = [], activeSessionId, onSetActiveSession, activeTestId, onSetActiveTest }) {
+function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd, allEvents, useCelsius, onUnitToggle, teamCode, fleets = [], activeSessionId, onSetActiveSession, activeTestId, onSetActiveTest, catalog = [], onCatalogSave }) {
   const [tab, setTab] = useState("sessions");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState(null);
@@ -14195,6 +14675,9 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
         onUpdateEventForecast: (fc) => onUpdate({ ...event, forecast: fc }),
         eventSessions: event.sessions || [],
         onGoHome: onBack,
+        catalog,
+        onCatalogSave,
+        event,
         onCopyTestToSession: (destSessionId, copiedTest) => {
           const updatedSessions = (event.sessions || []).map(
             (s) => s.id === destSessionId ? { ...s, tests: [...s.tests || [], copiedTest] } : s
@@ -15090,11 +15573,28 @@ function App() {
       if (e.application) seedVoc.applications = [.../* @__PURE__ */ new Set([...seedVoc.applications || [], e.application])].sort();
       if (e.brand) seedVoc.brands = [.../* @__PURE__ */ new Set([...seedVoc.brands || [], e.brand])].sort();
     });
+    const remoteSeed = await loadRemoteSeedCatalog();
+    const cachedEnr = lsGet(`waxlab:seedEnrichments`) || {};
+    const seedBase = remoteSeed.map((e) => {
+      const enr = cachedEnr[e.id];
+      if (!enr) return e;
+      return {
+        ...e,
+        winCount: enr.winCount || 0,
+        winHistory: enr.winHistory || [],
+        snowTypes: [.../* @__PURE__ */ new Set([...e.snowTypes || [], ...enr.snowTypes || []])],
+        tempMinF: enr.tempMinF != null && (e.tempMinF == null || enr.tempMinF < e.tempMinF) ? enr.tempMinF : e.tempMinF,
+        tempMaxF: enr.tempMaxF != null && (e.tempMaxF == null || enr.tempMaxF > e.tempMaxF) ? enr.tempMaxF : e.tempMaxF,
+        lastWin: enr.lastWin || null
+      };
+    });
+    const teamCustom = (cat || []).filter((e) => !e._seed);
+    const enrichedCat = [...seedBase, ...teamCustom];
     setEvents(evs || []);
     setVocab(seedVoc);
     setFleets(fls || []);
     setAllEventsGlobal(allEvs || []);
-    setCatalog(cat || []);
+    setCatalog(enrichedCat);
     if (!lsGet(`waxlab:seen:${code}`)) {
       setShowOnboard(true);
       lsSet(`waxlab:seen:${code}`, true);
@@ -15400,7 +15900,12 @@ function App() {
         useCelsius,
         onUnitToggle: toggleUnit,
         teamCode,
-        fleets
+        fleets,
+        catalog,
+        onCatalogSave: async (updated) => {
+          setCatalog(updated);
+          await saveCatalog(teamCode, updated);
+        }
       }
     ));
   if (view === "fleets")
@@ -16725,7 +17230,8 @@ function AdminDashboard({ onLeave, darkMode, onToggleDark }) {
     { id: "teams", label: "Teams" },
     { id: "events", label: "Events" },
     { id: "usage", label: "Usage" },
-    { id: "devices", label: "Devices" }
+    { id: "devices", label: "Devices" },
+    { id: "catalog", label: "Wax Catalog" }
   ];
   function Stat({ label, value, sub, color }) {
     return /* @__PURE__ */ React.createElement("div", { style: {
@@ -17087,7 +17593,7 @@ function AdminDashboard({ onLeave, darkMode, onToggleDark }) {
       marginTop: 8,
       color: pingMsg.startsWith("\u2713") ? C.green : pingMsg.startsWith("\u2717") ? C.red : C.faint
     } }, pingMsg), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.faint, marginTop: 10, lineHeight: 1.5 } }, "If the test ping succeeds but other devices aren't showing up, those devices joined before analytics was deployed and haven't fired a ping yet \u2014 they'll appear automatically on their next team join."));
-  })())));
+  })()), tab === "catalog" && /* @__PURE__ */ React.createElement(AdminSeedCatalog, { C })));
 }
 function WaxRoomEventPicker({ events, onSelect, onNew, onDelete, teamCode, onSwitchMode }) {
   const [confirmId, setConfirmId] = useState(null);
@@ -18741,5 +19247,527 @@ function WaxRoomDashboard({
       ))
     )
   ));
+}
+function AdminSeedCatalog({ C }) {
+  const [entries, setEntries] = useState(null);
+  const [err, setErr] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [search, setSearch] = useState("");
+  const [brandFilter, setBrand] = useState("all");
+  const [catFilter, setCat] = useState("all");
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [aiPaste, setAiPaste] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResults, setAiResults] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
+  useEffect(() => {
+    loadEntries();
+  }, []);
+  const mono = { fontFamily: "'IBM Plex Mono','SF Mono',monospace" };
+  const inp = (extra = {}) => ({
+    background: C.card,
+    border: `1px solid ${C.border}`,
+    borderRadius: 6,
+    padding: "8px 10px",
+    fontSize: 13,
+    color: C.ink,
+    width: "100%",
+    outline: "none",
+    fontFamily: "inherit",
+    ...extra
+  });
+  const btn = (col = C.accent) => ({
+    background: col,
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    padding: "8px 16px",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    letterSpacing: "0.04em"
+  });
+  const btnGhost = () => ({
+    background: "transparent",
+    color: C.ink,
+    border: `1px solid ${C.border}`,
+    borderRadius: 6,
+    padding: "8px 16px",
+    fontSize: 12,
+    cursor: "pointer"
+  });
+  async function loadEntries() {
+    setErr(null);
+    try {
+      const remote = await loadRemoteSeedCatalog();
+      setEntries(remote);
+    } catch (e) {
+      setErr(e.message);
+      setEntries(WAX_SEED_CATALOG);
+    }
+  }
+  function flash(m) {
+    setMsg(m);
+    setTimeout(() => setMsg(null), 3e3);
+  }
+  const brands = entries ? [...new Set(entries.map((e) => e.brand || e.product?.split(" ")[0]).filter(Boolean))].sort() : [];
+  const filtered = (entries || []).filter((e) => brandFilter === "all" || (e.brand || e.product?.split(" ")[0]) === brandFilter).filter((e) => catFilter === "all" || e.category === catFilter).filter((e) => !search || e.product?.toLowerCase().includes(search.toLowerCase()) || e.notes?.toLowerCase().includes(search.toLowerCase()));
+  function startEdit(entry) {
+    setEditing(entry.id);
+    setDraft({ ...entry });
+    setAiResults(null);
+  }
+  function startNew() {
+    const blank = {
+      id: `seed-${Date.now()}`,
+      product: "",
+      brand: "",
+      category: "glide",
+      waxForm: "solid",
+      tempMinF: "",
+      tempMaxF: "",
+      snowTypes: [],
+      notes: "",
+      application: "",
+      _seed: true,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    setEditing("new");
+    setDraft(blank);
+    setAiResults(null);
+  }
+  function cancelEdit() {
+    setEditing(null);
+    setDraft(null);
+  }
+  async function commitEdit() {
+    if (!draft?.product?.trim()) return;
+    setSaving(true);
+    try {
+      const saved = await saveRemoteSeedEntry(draft);
+      const updated = await loadRemoteSeedCatalog();
+      setEntries(updated);
+      setEditing(null);
+      setDraft(null);
+      flash("\u2713 Saved");
+    } catch (e) {
+      flash("\u2717 " + e.message);
+    }
+    setSaving(false);
+  }
+  async function doDelete(id) {
+    setSaving(true);
+    try {
+      await deleteRemoteSeedEntry(id);
+      const updated = await loadRemoteSeedCatalog();
+      setEntries(updated);
+      setConfirmDel(null);
+      flash("\u2713 Deleted");
+    } catch (e) {
+      flash("\u2717 " + e.message);
+    }
+    setSaving(false);
+  }
+  async function runAiExtract() {
+    if (!pasteText.trim()) return;
+    setAiLoading(true);
+    setAiResults(null);
+    const prompt = `You are a Nordic ski wax database curator. Extract all individual wax products from the text below. Return ONLY a JSON array, no markdown, no preamble.
+
+TEXT:
+${pasteText.slice(0, 6e3)}
+
+For each product extract:
+- product (string): full product name including brand, e.g. "Vauhti GS Carrot"
+- brand (string): brand name only, e.g. "Vauhti"
+- category (string): one of "glide", "kick", "binder", "klister", "base"
+- waxForm (string): one of "solid", "liquid", "powder", "klister", "paste", "spray", "combination", "base-binder"
+- tempMinF (number|null): minimum temp in Fahrenheit (convert from C if needed)
+- tempMaxF (number|null): maximum temp in Fahrenheit
+- snowTypes (string[]): snow types this wax suits, e.g. ["new","dry powder","artificial"]
+- notes (string): one sentence description
+- application (string): application method, e.g. "Iron 145\xB0C, scrape, brush"
+
+Return an array. If a field is unknown leave it null or empty.
+Only include actual wax products \u2014 skip tools, accessories, brushes, irons.`;
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 2e3,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const d = await res.json();
+      const raw = (d.content || []).map((b) => b.text || "").join("").trim().replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error("Expected array");
+      const withIds = parsed.map((p, i) => ({
+        ...p,
+        id: `seed-${Date.now()}-${i}`,
+        _seed: true,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+        snowTypes: p.snowTypes || []
+      }));
+      setAiResults(withIds);
+    } catch (e) {
+      flash("AI extraction failed: " + e.message);
+    }
+    setAiLoading(false);
+  }
+  async function importAiResults() {
+    if (!aiResults?.length) return;
+    setSaving(true);
+    let ok = 0, fail = 0;
+    for (const entry of aiResults) {
+      try {
+        await saveRemoteSeedEntry(entry);
+        ok++;
+      } catch (e) {
+        fail++;
+        console.warn("import fail:", e.message);
+      }
+    }
+    const updated = await loadRemoteSeedCatalog();
+    setEntries(updated);
+    setAiPaste(false);
+    setPasteText("");
+    setAiResults(null);
+    flash(`\u2713 Imported ${ok} product${ok !== 1 ? "s" : ""}${fail ? ` (${fail} failed)` : ""}`);
+    setSaving(false);
+  }
+  function editAiResult(i, field, val) {
+    setAiResults((prev) => prev.map((r, j) => j === i ? { ...r, [field]: val } : r));
+  }
+  function removeAiResult(i) {
+    setAiResults((prev) => prev.filter((_, j) => j !== i));
+  }
+  const Field = ({ label, value, onChange, type = "text", options }) => /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: C.faint,
+    marginBottom: 3
+  } }, label), options ? /* @__PURE__ */ React.createElement("select", { value: value || "", onChange: (e) => onChange(e.target.value), style: inp() }, options.map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o || "\u2014"))) : /* @__PURE__ */ React.createElement("input", { type, value: value ?? "", onChange: (e) => onChange(e.target.value), style: inp() }));
+  const CAT_OPTS = ["glide", "kick", "binder", "klister", "base"];
+  const FORM_OPTS = ["", "solid", "liquid", "powder", "klister", "paste", "spray", "combination", "base-binder", "other"];
+  const BRAND_OPTS = ["", "Swix", "Vauhti", "Rex", "Toko", "Start", "Rode", "Solda", "Star", "SkiGo", "Holmenkol", "Gallium", "Other"];
+  const EditForm = ({ d, onField, onCommit, onCancel, saving: saving2 }) => /* @__PURE__ */ React.createElement("div", { style: {
+    background: C.card,
+    border: `2px solid ${C.accent}`,
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 12
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "1/-1" } }, /* @__PURE__ */ React.createElement(Field, { label: "Product Name", value: d.product, onChange: (v) => onField("product", v) })), /* @__PURE__ */ React.createElement(
+    Field,
+    {
+      label: "Brand",
+      value: d.brand,
+      onChange: (v) => onField("brand", v),
+      options: BRAND_OPTS
+    }
+  ), /* @__PURE__ */ React.createElement(
+    Field,
+    {
+      label: "Category",
+      value: d.category,
+      onChange: (v) => onField("category", v),
+      options: CAT_OPTS
+    }
+  ), /* @__PURE__ */ React.createElement(
+    Field,
+    {
+      label: "Wax Form",
+      value: d.waxForm,
+      onChange: (v) => onField("waxForm", v),
+      options: FORM_OPTS
+    }
+  ), /* @__PURE__ */ React.createElement("div", null), /* @__PURE__ */ React.createElement(Field, { label: "Temp Min \xB0F", value: d.tempMinF, onChange: (v) => onField("tempMinF", v == "" ? "" : Number(v)), type: "number" }), /* @__PURE__ */ React.createElement(Field, { label: "Temp Max \xB0F", value: d.tempMaxF, onChange: (v) => onField("tempMaxF", v == "" ? "" : Number(v)), type: "number" })), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: C.faint,
+    marginBottom: 3
+  } }, "Snow Types (comma-separated)"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: (d.snowTypes || []).join(", "),
+      onChange: (e) => onField("snowTypes", e.target.value.split(",").map((s) => s.trim()).filter(Boolean)),
+      style: inp(),
+      placeholder: "e.g. new, dry powder, artificial"
+    }
+  )), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: C.faint,
+    marginBottom: 3
+  } }, "Application"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: d.application || "",
+      onChange: (e) => onField("application", e.target.value),
+      style: inp(),
+      placeholder: "e.g. Iron 145\xB0C, scrape, brush"
+    }
+  )), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: C.faint,
+    marginBottom: 3
+  } }, "Notes"), /* @__PURE__ */ React.createElement(
+    "textarea",
+    {
+      value: d.notes || "",
+      onChange: (e) => onField("notes", e.target.value),
+      style: { ...inp(), minHeight: 64, resize: "vertical" }
+    }
+  )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: onCommit, disabled: saving2, style: btn() }, saving2 ? "Saving\u2026" : "Save Product"), /* @__PURE__ */ React.createElement("button", { onClick: onCancel, style: btnGhost() }, "Cancel")));
+  if (entries === null) return /* @__PURE__ */ React.createElement("div", { style: { padding: 32, textAlign: "center", color: C.faint } }, "Loading catalog\u2026");
+  return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 0 32px" } }, /* @__PURE__ */ React.createElement("div", { style: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+    flexWrap: "wrap",
+    gap: 8
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 800, color: C.ink } }, "Wax Catalog"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, marginTop: 2 } }, entries.length, " products \xB7 shared across all teams")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => {
+    setAiPaste(true);
+    setEditing(null);
+  }, style: btn(C.blue) }, "\u2726 AI Paste Import"), /* @__PURE__ */ React.createElement("button", { onClick: startNew, style: btn(C.green) }, "+ Add Product"), /* @__PURE__ */ React.createElement("button", { onClick: loadEntries, style: btnGhost() }, "\u21BB Refresh"))), msg && /* @__PURE__ */ React.createElement("div", { style: {
+    padding: "8px 12px",
+    borderRadius: 6,
+    marginBottom: 12,
+    fontSize: 13,
+    background: msg.startsWith("\u2713") ? `${C.green}22` : `${C.red}22`,
+    color: msg.startsWith("\u2713") ? C.green : C.red,
+    border: `1px solid currentColor`
+  } }, msg), err && /* @__PURE__ */ React.createElement("div", { style: {
+    padding: "8px 12px",
+    borderRadius: 6,
+    marginBottom: 12,
+    fontSize: 13,
+    background: `${C.red}22`,
+    color: C.red
+  } }, err, " \u2014 showing compiled fallback"), aiPaste && /* @__PURE__ */ React.createElement("div", { style: {
+    background: C.card,
+    border: `1px solid ${C.accent}`,
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 16
+  } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14, color: C.ink, marginBottom: 4 } }, "\u2726 AI Paste Import"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, marginBottom: 10, lineHeight: 1.6 } }, "Paste raw text from a brand's website, PDF catalog, or retailer product page. Claude will extract product names, temp ranges, wax forms, snow types, and notes. Review the results before importing."), /* @__PURE__ */ React.createElement(
+    "textarea",
+    {
+      value: pasteText,
+      onChange: (e) => setPasteText(e.target.value),
+      style: { ...inp(), minHeight: 120, resize: "vertical", marginBottom: 8, fontFamily: "inherit", fontSize: 12 },
+      placeholder: "Paste product descriptions here \u2014 as many products as you like. Works with: brand pages, PDF extracts, retailer listings, race service tech notes\u2026"
+    }
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: aiResults ? 16 : 0 } }, /* @__PURE__ */ React.createElement("button", { onClick: runAiExtract, disabled: aiLoading || !pasteText.trim(), style: btn(C.accent) }, aiLoading ? "Extracting\u2026" : "Extract Products"), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => {
+        setAiPaste(false);
+        setPasteText("");
+        setAiResults(null);
+      },
+      style: btnGhost()
+    },
+    "Cancel"
+  )), aiResults && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 } }, aiResults.length, " product", aiResults.length !== 1 ? "s" : "", " extracted \u2014 review and edit before importing"), aiResults.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
+    background: C.bg,
+    border: `1px solid ${C.border}`,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: r.product || "",
+      onChange: (e) => editAiResult(i, "product", e.target.value),
+      style: { ...inp(), fontWeight: 700, marginBottom: 4 },
+      placeholder: "Product name"
+    }
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginBottom: 4 } }, /* @__PURE__ */ React.createElement(
+    "select",
+    {
+      value: r.category || "glide",
+      onChange: (e) => editAiResult(i, "category", e.target.value),
+      style: inp({ fontSize: 11, padding: "4px 6px" })
+    },
+    CAT_OPTS.map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o))
+  ), /* @__PURE__ */ React.createElement(
+    "select",
+    {
+      value: r.waxForm || "",
+      onChange: (e) => editAiResult(i, "waxForm", e.target.value),
+      style: inp({ fontSize: 11, padding: "4px 6px" })
+    },
+    FORM_OPTS.map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o || "\u2014"))
+  ), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      value: r.tempMinF ?? "",
+      placeholder: "Min \xB0F",
+      onChange: (e) => editAiResult(i, "tempMinF", e.target.value == "" ? "" : Number(e.target.value)),
+      style: inp({ fontSize: 11, padding: "4px 6px" })
+    }
+  ), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      value: r.tempMaxF ?? "",
+      placeholder: "Max \xB0F",
+      onChange: (e) => editAiResult(i, "tempMaxF", e.target.value == "" ? "" : Number(e.target.value)),
+      style: inp({ fontSize: 11, padding: "4px 6px" })
+    }
+  )), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: (r.snowTypes || []).join(", "),
+      onChange: (e) => editAiResult(i, "snowTypes", e.target.value.split(",").map((s) => s.trim()).filter(Boolean)),
+      style: inp({ fontSize: 11, padding: "4px 6px", marginBottom: 4 }),
+      placeholder: "Snow types (comma-separated)"
+    }
+  ), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: r.notes || "",
+      onChange: (e) => editAiResult(i, "notes", e.target.value),
+      style: inp({ fontSize: 11, padding: "4px 6px" }),
+      placeholder: "Notes"
+    }
+  )), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => removeAiResult(i),
+      style: {
+        background: "none",
+        border: "none",
+        color: C.red,
+        cursor: "pointer",
+        fontSize: 18,
+        lineHeight: 1,
+        flexShrink: 0,
+        padding: "2px 4px"
+      }
+    },
+    "\xD7"
+  )))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 4 } }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: importAiResults,
+      disabled: saving || aiResults.length === 0,
+      style: btn(C.green)
+    },
+    saving ? "Importing\u2026" : `Import All ${aiResults.length} Products`
+  ), /* @__PURE__ */ React.createElement("button", { onClick: () => setAiResults(null), style: btnGhost() }, "Re-extract")))), editing === "new" && draft && /* @__PURE__ */ React.createElement(
+    EditForm,
+    {
+      d: draft,
+      onField: (f, v) => setDraft((p) => ({ ...p, [f]: v })),
+      onCommit: commitEdit,
+      onCancel: cancelEdit,
+      saving
+    }
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: search,
+      onChange: (e) => setSearch(e.target.value),
+      placeholder: `Search ${entries.length} products\u2026`,
+      style: { ...inp(), flex: 1, minWidth: 160 }
+    }
+  ), /* @__PURE__ */ React.createElement("select", { value: brandFilter, onChange: (e) => setBrand(e.target.value), style: inp({ width: "auto" }) }, /* @__PURE__ */ React.createElement("option", { value: "all" }, "All brands"), brands.map((b) => /* @__PURE__ */ React.createElement("option", { key: b, value: b }, b))), /* @__PURE__ */ React.createElement("select", { value: catFilter, onChange: (e) => setCat(e.target.value), style: inp({ width: "auto" }) }, /* @__PURE__ */ React.createElement("option", { value: "all" }, "All categories"), CAT_OPTS.map((c) => /* @__PURE__ */ React.createElement("option", { key: c, value: c }, c))), /* @__PURE__ */ React.createElement("span", { style: { ...mono, fontSize: 11, color: C.faint, whiteSpace: "nowrap" } }, filtered.length, " shown")), /* @__PURE__ */ React.createElement("div", null, filtered.map((entry) => {
+    const isEditing = editing === entry.id;
+    const tempStr = entry.tempMinF != null && entry.tempMaxF != null ? `${entry.tempMinF}\u2013${entry.tempMaxF}\xB0F` : entry.tempMinF != null ? `\u2265${entry.tempMinF}\xB0F` : entry.tempMaxF != null ? `\u2264${entry.tempMaxF}\xB0F` : "\u2014";
+    const catColor = entry.category === "glide" ? C.blue : entry.category === "kick" ? C.green : C.amber;
+    return /* @__PURE__ */ React.createElement("div", { key: entry.id }, isEditing && draft ? /* @__PURE__ */ React.createElement(
+      EditForm,
+      {
+        d: draft,
+        onField: (f, v) => setDraft((p) => ({ ...p, [f]: v })),
+        onCommit: commitEdit,
+        onCancel: cancelEdit,
+        saving
+      }
+    ) : /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: "10px 12px",
+      background: C.card,
+      borderRadius: 8,
+      border: `1px solid ${C.border}`,
+      marginBottom: 6,
+      opacity: confirmDel === entry.id ? 0.5 : 1,
+      transition: "opacity 0.15s"
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      width: 3,
+      borderRadius: 2,
+      alignSelf: "stretch",
+      background: catColor,
+      flexShrink: 0
+    } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, fontSize: 13, color: C.ink } }, entry.product), /* @__PURE__ */ React.createElement("span", { style: {
+      ...mono,
+      fontSize: 9,
+      padding: "1px 6px",
+      borderRadius: 3,
+      background: `${catColor}22`,
+      color: catColor,
+      fontWeight: 700
+    } }, entry.category), entry.waxForm && /* @__PURE__ */ React.createElement("span", { style: { ...mono, fontSize: 9, color: C.faint } }, entry.waxForm), entry.winCount > 0 && /* @__PURE__ */ React.createElement("span", { style: { ...mono, fontSize: 9, color: C.green, fontWeight: 700 } }, "\u2605 ", entry.winCount, " win", entry.winCount !== 1 ? "s" : "")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 3, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { ...mono, fontSize: 10, color: C.faint } }, tempStr), entry.snowTypes?.length > 0 && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.faint } }, entry.snowTypes.slice(0, 3).join(", "), entry.snowTypes.length > 3 ? ` +${entry.snowTypes.length - 3}` : "")), entry.notes && /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 11,
+      color: C.faint,
+      marginTop: 3,
+      lineHeight: 1.5,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      maxWidth: 480
+    } }, entry.notes)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flexShrink: 0 } }, confirmDel === entry.id ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => doDelete(entry.id),
+        disabled: saving,
+        style: { ...btn(C.red), padding: "5px 12px", fontSize: 11 }
+      },
+      saving ? "\u2026" : "Delete"
+    ), /* @__PURE__ */ React.createElement("button", { onClick: () => setConfirmDel(null), style: { ...btnGhost(), padding: "5px 12px", fontSize: 11 } }, "Cancel")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => startEdit(entry),
+        style: { ...btnGhost(), padding: "5px 12px", fontSize: 11 }
+      },
+      "Edit"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => setConfirmDel(entry.id),
+        style: {
+          background: "none",
+          border: "none",
+          color: C.faint,
+          cursor: "pointer",
+          fontSize: 18,
+          lineHeight: 1,
+          padding: "2px 4px"
+        }
+      },
+      "\xD7"
+    )))));
+  }), filtered.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.faint, fontSize: 13 } }, "No products match your search.")));
 }
 </script></body></html>
