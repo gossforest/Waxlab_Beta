@@ -7031,7 +7031,7 @@ Rules:
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "anthropic-dangerous-direct-browser-calls": "true" },
       signal: controller.signal,
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
@@ -9349,7 +9349,7 @@ Rules:
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "anthropic-dangerous-direct-browser-calls": "true" },
         body: JSON.stringify({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 800,
@@ -9363,7 +9363,8 @@ Rules:
       if (!parsed.glide && !parsed.kick) throw new Error("Unexpected response shape");
       setResult({ ...parsed, conditions: condLines });
     } catch (e) {
-      setErr("Could not get recommendations. Check your connection and try again.");
+      const detail = e?.message || String(e);
+      setErr(`Recommendation failed: ${detail}. If this persists, check that the Anthropic API is reachable.`);
       console.error("WaxRecommend:", e);
     }
     setLoading(false);
@@ -14232,7 +14233,26 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
       onClick: () => setTab(t.id)
     },
     t.label
-  ))), /* @__PURE__ */ React.createElement("div", { style: { padding: 16 } }, tab === "tests" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(TI, { label: "Session Name", value: session.name, onChange: (v) => upd({ name: v }), mic: true }), /* @__PURE__ */ React.createElement(TA, { label: "Notes", value: session.notes, onChange: (v) => upd({ notes: v }), rows: 2, mic: true }), /* @__PURE__ */ React.createElement(
+  ))), /* @__PURE__ */ React.createElement("div", { style: { padding: 16 } }, tab === "tests" && /* @__PURE__ */ React.createElement(React.Fragment, null, (() => {
+    const sw = session.weather || {};
+    const hasW = !!(sw.airTempF || sw.snowType || (session.snowTemps || []).length > 0);
+    return hasW ? /* @__PURE__ */ React.createElement("div", { style: { margin: "10px 16px 0", display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => setTab("conditions"),
+        className: "btn-ghost",
+        style: {
+          flex: 1,
+          fontSize: 12,
+          padding: "8px 0",
+          fontWeight: 600,
+          color: "var(--green)",
+          borderColor: "var(--green)"
+        }
+      },
+      "\u2726 Suggest Wax"
+    )) : null;
+  })(), /* @__PURE__ */ React.createElement(TI, { label: "Session Name", value: session.name, onChange: (v) => upd({ name: v }), mic: true }), /* @__PURE__ */ React.createElement(TA, { label: "Notes", value: session.notes, onChange: (v) => upd({ notes: v }), rows: 2, mic: true }), /* @__PURE__ */ React.createElement(
     GuidanceBanner,
     {
       storageKey: "waxlab:guide:tests2",
@@ -14550,6 +14570,17 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
     },
     "+ New Test"
   )), tab === "conditions" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(
+    GuidanceBanner,
+    {
+      storageKey: "waxlab:guide:conditions1",
+      title: "Conditions & Wax Suggestions",
+      lines: [
+        "Log snow and air temps using the snowflake button (bottom-right) or import live weather with GPS.",
+        "'Suggest Wax from History' appears once you have past test data \u2014 it matches conditions to your winners.",
+        "'AI Wax Suggestions' uses the built-in wax catalog + your test history to recommend glide and kick. Requires conditions to be logged."
+      ]
+    }
+  ), /* @__PURE__ */ React.createElement(
     WeatherPanel,
     {
       weather: session.weather || {},
@@ -15053,7 +15084,24 @@ function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore
     textTransform: "uppercase",
     color: "var(--ink-faint)",
     marginBottom: 4
-  } }, "WaxLab"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, marginBottom: 12 } }, "Events"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2, fontSize: 14 }, onClick: () => setShowNewModal(true) }, "+ New Event"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1, fontSize: 13 }, onClick: onProducts }, "Library"))), /* @__PURE__ */ React.createElement(SyncStatusBanner, { syncStatus, online }), /* @__PURE__ */ React.createElement("div", { style: { padding: 16 } }, /* @__PURE__ */ React.createElement(
+  } }, "WaxLab"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 26, fontWeight: 800, marginBottom: 12 } }, "Events"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 1, fontSize: 14 }, onClick: () => setShowNewModal(true) }, "+ New Event")), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "btn-ghost",
+      style: {
+        width: "100%",
+        fontSize: 13,
+        padding: "10px 0",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6
+      },
+      onClick: onProducts
+    },
+    /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, lineHeight: 1 } }, "\u229E"),
+    " Wax Library & Catalog"
+  )), /* @__PURE__ */ React.createElement(SyncStatusBanner, { syncStatus, online }), /* @__PURE__ */ React.createElement("div", { style: { padding: 16 } }, /* @__PURE__ */ React.createElement(
     GuidanceBanner,
     {
       storageKey: "waxlab:guide:events2",
@@ -19397,7 +19445,7 @@ Only include actual wax products \u2014 skip tools, accessories, brushes, irons.
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "anthropic-dangerous-direct-browser-calls": "true" },
         body: JSON.stringify({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 2e3,
