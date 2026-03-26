@@ -3827,7 +3827,7 @@ Rules:
     const [qaIdStart, setQaIdStart] = useState("");
     const [qaDesc, setQaDesc] = useState("");
     const [quickErr, setQuickErr] = useState("");
-    function generateIdSequence(startId, count, lettersPerNum = 26) {
+    function generateIdSequence2(startId, count, lettersPerNum = 26) {
       const pairMatch = startId.match(/^(\d+)([A-Z])$/i);
       if (pairMatch) {
         const ids = [];
@@ -3890,14 +3890,14 @@ Rules:
       let ids;
       const idStart = qaIdStart.trim().toUpperCase();
       if (idStart) {
-        ids = generateIdSequence(idStart, count);
+        ids = generateIdSequence2(idStart, count);
       } else {
         const existingSkis = fleet.skis.filter((s) => s.id);
         if (existingSkis.length > 0) {
-          ids = generateIdSequence(nextSkiId(existingSkis), count);
+          ids = generateIdSequence2(nextSkiId(existingSkis), count);
         } else {
           const prefix = fleet.name ? fleet.name.replace(/[^A-Z]/gi, "").toUpperCase().slice(0, 2) || "S" : "S";
-          ids = generateIdSequence(prefix + "1", count);
+          ids = generateIdSequence2(prefix + "1", count);
         }
       }
       const desc = qaDesc.trim();
@@ -4035,8 +4035,8 @@ Rules:
       const previewCount = Math.min(Math.max(parseInt(qaCount) || 0, 1), 50);
       const idStart = qaIdStart.trim().toUpperCase();
       if (!idStart) return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 4, lineHeight: 1.6 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--ink-mid)" } }, "11a"), " \u2192 11a, 11b, 12a, 12b\u2026", "  ", /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--ink-mid)" } }, "S1"), " \u2192 S1, S2, S3\u2026", "  ", /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--ink-mid)" } }, "7"), " \u2192 7, 8, 9\u2026", "  ", /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--ink-mid)" } }, "F"), " \u2192 F1, F2, F3\u2026");
-      const preview = generateIdSequence(idStart, Math.min(previewCount, 6));
-      const suffix = previewCount > 6 ? ` \u2026 ${generateIdSequence(idStart, previewCount).slice(-1)[0]}` : "";
+      const preview = generateIdSequence2(idStart, Math.min(previewCount, 6));
+      const suffix = previewCount > 6 ? ` \u2026 ${generateIdSequence2(idStart, previewCount).slice(-1)[0]}` : "";
       return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, marginTop: 4, lineHeight: 1.6 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, "IDs: "), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--blue)", fontWeight: 600 } }, preview.join(", "), suffix), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, " (", previewCount, " skis)"));
     })()), /* @__PURE__ */ React.createElement(
       "button",
@@ -13396,6 +13396,33 @@ Rules:
     const [expandedSess, setExpSess] = useState(null);
     const [mobileTab, setMobileTab] = useState("overview");
     const [bracketOpen, setBracketOpen] = useState(false);
+    const [ntSessId, setNtSessId] = useState("");
+    const [ntNewSess, setNtNewSess] = useState("");
+    const [ntCat, setNtCat] = useState("glide");
+    const [ntType, setNtType] = useState("");
+    const [ntName, setNtName] = useState("");
+    const [ntTesters, setNtTesters] = useState("");
+    const [ntSkis, setNtSkis] = useState([]);
+    const [ntQaCount, setNtQaCount] = useState("4");
+    const [ntQaStart, setNtQaStart] = useState("");
+    const [ntQaProd, setNtQaProd] = useState("");
+    const [ntSrcTest, setNtSrcTest] = useState("");
+    const [ntErr, setNtErr] = useState("");
+    function openNewTest(sessId = "") {
+      setNtSessId(sessId);
+      setNtNewSess("");
+      setNtCat("glide");
+      setNtType("");
+      setNtName("");
+      setNtTesters("");
+      setNtSkis([]);
+      setNtQaCount("4");
+      setNtQaStart("");
+      setNtQaProd("");
+      setNtSrcTest("");
+      setNtErr("");
+      setPanel("newtest");
+    }
     const width = useWindowWidth();
     const is4col = width >= 1200;
     const is3col = width >= 900 && width < 1200;
@@ -13483,7 +13510,7 @@ Rules:
         return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
       };
       const raceTimes = event.raceTimes || [];
-      return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(ColHead, { action: /* @__PURE__ */ React.createElement(SmallBtn, { onClick: () => setPanel("newtest") }, "+ Test") }, "Schedule"), raceTimes.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, raceTimes.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
+      return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(ColHead, { action: /* @__PURE__ */ React.createElement(SmallBtn, { onClick: () => openNewTest() }, "+ Test") }, "Schedule"), raceTimes.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, raceTimes.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
@@ -13568,7 +13595,27 @@ Rules:
               cursor: "pointer"
             }
           },
-          /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, sess.name), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5 } }, live > 0 && /* @__PURE__ */ React.createElement(Pill, { label: `${live} live`, color: C.green }), done > 0 && /* @__PURE__ */ React.createElement(Pill, { label: `${done} done`, color: C.faint }))),
+          /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, sess.name), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, alignItems: "center" } }, live > 0 && /* @__PURE__ */ React.createElement(Pill, { label: `${live} live`, color: C.green }), done > 0 && /* @__PURE__ */ React.createElement(Pill, { label: `${done} done`, color: C.faint }), /* @__PURE__ */ React.createElement(
+            "button",
+            {
+              onClick: (e) => {
+                e.stopPropagation();
+                openNewTest(sess.id);
+              },
+              style: {
+                background: "none",
+                border: `1px solid ${C.rule}`,
+                borderRadius: 4,
+                fontSize: 10,
+                fontWeight: 700,
+                padding: "2px 7px",
+                cursor: "pointer",
+                color: C.mid,
+                minHeight: 24
+              }
+            },
+            "+ Test"
+          ))),
           expandedSess === sess.id && tests.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${C.rule}` } }, tests.map((t) => {
             const win = t.skis?.find((s) => s.standing === "Winner");
             const active = (t.skis || []).filter((s) => s.standing === "Active").length;
@@ -13626,6 +13673,15 @@ Rules:
       const test = sess && (sess.tests || []).find((t) => t.id === selectedTest.testId);
       if (!test) return null;
       const isGlide = test.category === "glide" || test.category === "glide-out";
+      const bracketWinner = (test.skis || []).find((s) => s.standing === "Winner");
+      const calledAt = test.completedAt ? (() => {
+        const d = new Date(test.completedAt);
+        return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+      })() : null;
+      const bc = test.completedConditions;
+      const bcParts = [];
+      if (bc?.snowTempF != null) bcParts.push(`snow ${dispT(bc.snowTempF)}`);
+      if (bc?.airTempF != null) bcParts.push(`air ${dispT(bc.airTempF)}`);
       return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
         display: "flex",
         alignItems: "center",
@@ -13653,7 +13709,30 @@ Rules:
         color: C.faint,
         marginBottom: 10,
         fontFamily: "'SF Mono','Fira Code',monospace"
-      } }, test._sess?.name, " \xB7 ", test.testers.join(", ")), /* @__PURE__ */ React.createElement(TournamentFlow, { test, isGlide, isBlind: false }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ React.createElement("div", { style: {
+      } }, sess?.name, " \xB7 ", test.testers.join(", ")), bracketWinner && (calledAt || bcParts.length > 0) && /* @__PURE__ */ React.createElement("div", { style: {
+        padding: "9px 12px",
+        background: `${C.green}0f`,
+        border: `1px solid ${C.green}`,
+        borderRadius: 7,
+        marginBottom: 14,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexWrap: "wrap"
+      } }, /* @__PURE__ */ React.createElement(TrophyIcon, { size: 12, color: C.green }), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, fontSize: 13, color: C.ink } }, bracketWinner.product || bracketWinner.id), calledAt && /* @__PURE__ */ React.createElement("span", { style: {
+        fontFamily: "'SF Mono','Fira Code',monospace",
+        fontSize: 10,
+        fontWeight: 700,
+        color: C.mid
+      } }, calledAt), bcParts.map((p) => /* @__PURE__ */ React.createElement("span", { key: p, style: {
+        fontFamily: "'SF Mono','Fira Code',monospace",
+        fontSize: 10,
+        color: C.faint,
+        padding: "1px 6px",
+        background: C.surface3,
+        border: `1px solid ${C.rule}`,
+        borderRadius: 3
+      } }, p))), /* @__PURE__ */ React.createElement(TournamentFlow, { test, isGlide, isBlind: false }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ React.createElement("div", { style: {
         fontSize: 10,
         fontWeight: 700,
         letterSpacing: "0.08em",
@@ -13737,6 +13816,14 @@ Rules:
         const max = isGlide ? 10 : 20;
         const tieNote = (t.rounds || []).some((r) => r.tie && (r.skiA === win.id || r.skiB === win.id));
         const isSelected = selectedTest?.testId === t.id;
+        const calledAt = t.completedAt ? (() => {
+          const d = new Date(t.completedAt);
+          return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+        })() : null;
+        const cond = t.completedConditions;
+        const condParts = [];
+        if (cond?.snowTempF != null) condParts.push(`snow ${dispT(cond.snowTempF)}`);
+        if (cond?.airTempF != null) condParts.push(`air ${dispT(cond.airTempF)}`);
         return /* @__PURE__ */ React.createElement(
           "div",
           {
@@ -13749,13 +13836,10 @@ Rules:
               borderLeft: `3px solid ${C.ink}`,
               borderRadius: 8,
               marginBottom: 6,
-              cursor: "pointer",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
+              cursor: "pointer"
             }
           },
-          /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(TrophyIcon, { size: 12, color: C.ink }), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, fontSize: 14 } }, win.product || win.id), win.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: win.waxForm }), tieNote && /* @__PURE__ */ React.createElement(Pill, { label: "tied", color: C.amber })), win.product && /* @__PURE__ */ React.createElement("span", { style: {
+          /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(TrophyIcon, { size: 12, color: C.ink }), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, fontSize: 14 } }, win.product || win.id), win.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: win.waxForm }), tieNote && /* @__PURE__ */ React.createElement(Pill, { label: "tied", color: C.amber })), win.product && /* @__PURE__ */ React.createElement("span", { style: {
             fontFamily: "'SF Mono','Fira Code',monospace",
             fontSize: 10,
             color: C.faint
@@ -13764,8 +13848,34 @@ Rules:
             color: C.faint,
             marginTop: 3,
             fontFamily: "'SF Mono','Fira Code',monospace"
-          } }, t._sess.name, " \xB7 ", t.name)),
-          comp != null && /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, marginLeft: 8 } }, /* @__PURE__ */ React.createElement(RatingBadge, { score: comp, max }))
+          } }, t._sess.name, " \xB7 ", t.name)), comp != null && /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, marginLeft: 8 } }, /* @__PURE__ */ React.createElement(RatingBadge, { score: comp, max }))),
+          (calledAt || condParts.length > 0) && /* @__PURE__ */ React.createElement("div", { style: {
+            display: "flex",
+            gap: 8,
+            marginTop: 7,
+            paddingTop: 6,
+            borderTop: `1px solid ${C.rule}`,
+            flexWrap: "wrap",
+            alignItems: "center"
+          } }, calledAt && /* @__PURE__ */ React.createElement("span", { style: {
+            fontFamily: "'SF Mono','Fira Code',monospace",
+            fontSize: 10,
+            fontWeight: 700,
+            color: C.mid
+          } }, "Called ", calledAt), condParts.map((p) => /* @__PURE__ */ React.createElement("span", { key: p, style: {
+            fontFamily: "'SF Mono','Fira Code',monospace",
+            fontSize: 10,
+            color: C.faint,
+            padding: "1px 6px",
+            background: C.surface3,
+            border: `1px solid ${C.rule}`,
+            borderRadius: 3
+          } }, p)), calledAt && condParts.length === 0 && /* @__PURE__ */ React.createElement("span", { style: {
+            fontFamily: "'SF Mono','Fira Code',monospace",
+            fontSize: 10,
+            color: C.faint,
+            fontStyle: "italic"
+          } }, "no conditions logged"))
         );
       })), pendingTests.length > 0 && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(ColHead, null, "Awaiting Fleet (", pendingTests.length, ")"), pendingTests.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, style: {
         padding: "8px 12px",
@@ -14244,28 +14354,544 @@ Rules:
         {
           onClick: (e) => e.stopPropagation(),
           style: {
-            width: Math.min(400, width - 20),
+            width: Math.min(480, width - 20),
             background: C.bg,
             height: "100%",
             overflowY: "auto",
-            padding: 24,
+            display: "flex",
+            flexDirection: "column",
             borderLeft: `1px solid ${C.rule}`
           }
         },
         /* @__PURE__ */ React.createElement("div", { style: {
+          padding: "18px 24px 14px",
+          borderBottom: `1px solid ${C.rule}`,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: 20
-        } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 17, fontWeight: 700 } }, "New Test"), /* @__PURE__ */ React.createElement("button", { onClick: () => setPanel(null), style: {
+          flexShrink: 0,
+          background: C.surface
+        } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 17, fontWeight: 700 } }, "Set Up New Test"), /* @__PURE__ */ React.createElement("button", { onClick: () => setPanel(null), style: {
           background: "none",
           border: "none",
           fontSize: 22,
           cursor: "pointer",
-          color: C.faint
+          color: C.faint,
+          lineHeight: 1
         } }, "\xD7")),
-        /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: C.mid, marginBottom: 20, lineHeight: 1.6 } }, "To create a test, open the event in the standard view and add it to a session."),
-        /* @__PURE__ */ React.createElement(SmallBtn, { primary: true, onClick: onBack }, "Go to Event View")
+        /* @__PURE__ */ React.createElement("div", { style: { flex: 1, overflowY: "auto", padding: "20px 24px" } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 22 } }, /* @__PURE__ */ React.createElement("div", { style: {
+          fontSize: 10,
+          fontWeight: 700,
+          color: C.faint,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          marginBottom: 10,
+          fontFamily: "'SF Mono','Fira Code',monospace"
+        } }, "1 \u2014 Session"), (event.sessions || []).length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 5, marginBottom: 10 } }, (event.sessions || []).map((s) => /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            key: s.id,
+            onClick: () => {
+              setNtSessId(s.id);
+              setNtNewSess("");
+            },
+            style: {
+              padding: "9px 12px",
+              borderRadius: 7,
+              border: `1.5px solid ${ntSessId === s.id ? C.ink : C.rule}`,
+              background: ntSessId === s.id ? `${C.ink}08` : C.surface,
+              cursor: "pointer",
+              textAlign: "left",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }
+          },
+          /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: ntSessId === s.id ? 700 : 400 } }, s.name),
+          /* @__PURE__ */ React.createElement("span", { style: {
+            fontFamily: "'SF Mono','Fira Code',monospace",
+            fontSize: 10,
+            color: C.faint
+          } }, (s.tests || []).length, " test", (s.tests || []).length !== 1 ? "s" : "")
+        ))), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              setNtSessId("__new__");
+              setNtNewSess(`Session ${(event.sessions || []).length + 1}`);
+            },
+            style: {
+              padding: "9px 12px",
+              borderRadius: 7,
+              width: "100%",
+              border: `1.5px dashed ${ntSessId === "__new__" ? C.ink : C.rule}`,
+              background: ntSessId === "__new__" ? `${C.ink}08` : "transparent",
+              cursor: "pointer",
+              textAlign: "left",
+              fontSize: 13,
+              color: ntSessId === "__new__" ? C.ink : C.faint
+            }
+          },
+          "+ Create new session"
+        ), ntSessId === "__new__" && /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            value: ntNewSess,
+            onChange: (e) => setNtNewSess(e.target.value),
+            placeholder: "Session name\u2026",
+            autoFocus: true,
+            style: {
+              marginTop: 8,
+              width: "100%",
+              background: C.surface,
+              border: `1px solid ${C.rule}`,
+              borderRadius: 6,
+              padding: "9px 10px",
+              fontSize: 14,
+              color: C.ink,
+              boxSizing: "border-box"
+            }
+          }
+        )), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 22 } }, /* @__PURE__ */ React.createElement("div", { style: {
+          fontSize: 10,
+          fontWeight: 700,
+          color: C.faint,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          marginBottom: 10,
+          fontFamily: "'SF Mono','Fira Code',monospace"
+        } }, "2 \u2014 Test type"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 10 } }, SCHED_TEST_TYPES.map((t) => /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            key: t.id,
+            onClick: () => {
+              setNtCat(t.id);
+              setNtType("");
+            },
+            style: {
+              flex: 1,
+              padding: "10px 0",
+              borderRadius: 7,
+              border: `1.5px solid ${ntCat === t.id ? C.ink : C.rule}`,
+              background: ntCat === t.id ? C.ink : "transparent",
+              color: ntCat === t.id ? C.bg : C.mid,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer"
+            }
+          },
+          t.label
+        ))), (SCHED_SUBTYPES[ntCat] || []).length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, flexWrap: "wrap" } }, (SCHED_SUBTYPES[ntCat] || []).map((s) => /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            key: s,
+            onClick: () => setNtType(ntType === s ? "" : s),
+            style: {
+              padding: "5px 12px",
+              borderRadius: 5,
+              border: `1px solid ${ntType === s ? C.blue : C.rule}`,
+              background: ntType === s ? `${C.blue}15` : "transparent",
+              color: ntType === s ? C.blue : C.mid,
+              fontSize: 12,
+              cursor: "pointer"
+            }
+          },
+          s
+        )))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 22 } }, /* @__PURE__ */ React.createElement("div", { style: {
+          fontSize: 10,
+          fontWeight: 700,
+          color: C.faint,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          marginBottom: 10,
+          fontFamily: "'SF Mono','Fira Code',monospace"
+        } }, "3 \u2014 Name & testers"), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            value: ntName,
+            onChange: (e) => setNtName(e.target.value),
+            placeholder: ntCat === "glide" ? `Glide${ntType ? ` ${ntType}` : ""}` : ntCat === "kick" ? `Kick${ntType ? ` ${ntType}` : ""}` : ntType || "Glide Out",
+            style: {
+              width: "100%",
+              background: C.surface,
+              border: `1px solid ${C.rule}`,
+              borderRadius: 6,
+              padding: "9px 10px",
+              fontSize: 14,
+              color: C.ink,
+              marginBottom: 8,
+              boxSizing: "border-box"
+            }
+          }
+        ), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            value: ntTesters,
+            onChange: (e) => setNtTesters(e.target.value),
+            placeholder: "Tester names, comma separated\u2026",
+            style: {
+              width: "100%",
+              background: C.surface,
+              border: `1px solid ${C.rule}`,
+              borderRadius: 6,
+              padding: "9px 10px",
+              fontSize: 13,
+              color: C.ink,
+              boxSizing: "border-box"
+            }
+          }
+        )), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 22 } }, /* @__PURE__ */ React.createElement("div", { style: {
+          fontSize: 10,
+          fontWeight: 700,
+          color: C.faint,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          marginBottom: 10,
+          fontFamily: "'SF Mono','Fira Code',monospace"
+        } }, "4 \u2014 Fleet"), allTests.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.mid, marginBottom: 6 } }, "Copy fleet from an existing test:"), /* @__PURE__ */ React.createElement(
+          "select",
+          {
+            value: ntSrcTest,
+            onChange: (e) => {
+              const tid = e.target.value;
+              setNtSrcTest(tid);
+              if (tid) {
+                const src = allTests.find((t) => t.id === tid);
+                if (src) setNtSkis((src.skis || []).map((s) => ({
+                  id: s.id,
+                  product: s.product || "",
+                  application: s.application || "",
+                  waxForm: s.waxForm || "",
+                  notes: s.notes || ""
+                })));
+              } else {
+                setNtSkis([]);
+              }
+            },
+            style: {
+              width: "100%",
+              background: C.surface,
+              border: `1px solid ${C.rule}`,
+              borderRadius: 6,
+              padding: "8px 10px",
+              fontSize: 13,
+              color: C.ink,
+              boxSizing: "border-box"
+            }
+          },
+          /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 Select a test to copy fleet from \u2014"),
+          allTests.map((t) => /* @__PURE__ */ React.createElement("option", { key: t.id, value: t.id }, t._sess.name, " / ", t.name, " (", (t.skis || []).length, " skis)"))
+        )), (fleets || []).length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.mid, marginBottom: 6 } }, "Or load ski IDs from a saved fleet (add products below):"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } }, (fleets || []).map((fl) => /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            key: fl.id,
+            onClick: () => {
+              setNtSrcTest("");
+              setNtSkis((fl.skis || []).map((s) => ({
+                id: s.id,
+                product: "",
+                application: "",
+                waxForm: ""
+              })));
+            },
+            style: {
+              padding: "7px 12px",
+              borderRadius: 6,
+              border: `1px solid ${C.rule}`,
+              background: C.surface,
+              cursor: "pointer",
+              textAlign: "left",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }
+          },
+          /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13 } }, fl.name),
+          /* @__PURE__ */ React.createElement("span", { style: {
+            fontFamily: "'SF Mono','Fira Code',monospace",
+            fontSize: 10,
+            color: C.faint
+          } }, (fl.skis || []).length, " skis")
+        )))), /* @__PURE__ */ React.createElement("div", { style: {
+          background: C.surface,
+          border: `1px solid ${C.rule}`,
+          borderRadius: 8,
+          padding: "12px 14px",
+          marginBottom: 10
+        } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.mid, marginBottom: 8 } }, "Quick-add skis:"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 8 } }, /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            value: ntQaCount,
+            onChange: (e) => setNtQaCount(e.target.value),
+            type: "number",
+            min: "1",
+            max: "50",
+            placeholder: "4",
+            style: {
+              width: 60,
+              background: C.bg,
+              border: `1px solid ${C.rule}`,
+              borderRadius: 5,
+              padding: "6px 8px",
+              fontSize: 13,
+              color: C.ink
+            }
+          }
+        ), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            value: ntQaStart,
+            onChange: (e) => setNtQaStart(e.target.value.toUpperCase()),
+            placeholder: "Start ID (e.g. A1)",
+            style: {
+              flex: 1,
+              background: C.bg,
+              border: `1px solid ${C.rule}`,
+              borderRadius: 5,
+              padding: "6px 8px",
+              fontSize: 13,
+              color: C.ink,
+              fontFamily: "'SF Mono','Fira Code',monospace"
+            }
+          }
+        ), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            value: ntQaProd,
+            onChange: (e) => setNtQaProd(e.target.value),
+            placeholder: "Product (optional)",
+            style: {
+              flex: 2,
+              background: C.bg,
+              border: `1px solid ${C.rule}`,
+              borderRadius: 5,
+              padding: "6px 8px",
+              fontSize: 13,
+              color: C.ink
+            }
+          }
+        )), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              const count = Math.min(Math.max(parseInt(ntQaCount) || 4, 1), 50);
+              const startId = ntQaStart.trim() || (ntSkis.length > 0 ? nextSkiId(ntSkis) : "A1");
+              const ids = generateIdSequence(startId, count);
+              const newSkis = ids.map((id) => ({
+                id,
+                product: ntQaProd.trim(),
+                application: "",
+                waxForm: ""
+              }));
+              setNtSkis((prev) => {
+                const existing = new Set(prev.map((s) => s.id));
+                return [...prev, ...newSkis.filter((s) => !existing.has(s.id))];
+              });
+              setNtQaStart("");
+              setNtQaProd("");
+            },
+            style: {
+              padding: "6px 14px",
+              borderRadius: 5,
+              border: `1px solid ${C.rule}`,
+              background: C.ink,
+              color: C.bg,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer"
+            }
+          },
+          "Add ",
+          ntQaCount || 4,
+          " skis"
+        )), ntSkis.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+          background: C.surface,
+          border: `1px solid ${C.rule}`,
+          borderRadius: 8,
+          overflow: "hidden"
+        } }, /* @__PURE__ */ React.createElement("div", { style: {
+          padding: "8px 12px",
+          borderBottom: `1px solid ${C.rule}`,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: C.mid } }, ntSkis.length, " ski", ntSkis.length !== 1 ? "s" : ""), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setNtSkis([]),
+            style: {
+              background: "none",
+              border: "none",
+              fontSize: 11,
+              color: C.red,
+              cursor: "pointer"
+            }
+          },
+          "Clear all"
+        )), /* @__PURE__ */ React.createElement("div", { style: { maxHeight: 200, overflowY: "auto" } }, ntSkis.map((ski, i) => /* @__PURE__ */ React.createElement("div", { key: ski.id, style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "6px 12px",
+          borderBottom: i < ntSkis.length - 1 ? `1px solid ${C.rule}` : "none"
+        } }, /* @__PURE__ */ React.createElement("span", { style: {
+          fontFamily: "'SF Mono','Fira Code',monospace",
+          fontSize: 12,
+          fontWeight: 700,
+          width: 40,
+          flexShrink: 0
+        } }, ski.id), /* @__PURE__ */ React.createElement(
+          "input",
+          {
+            value: ski.product,
+            onChange: (e) => {
+              const v = e.target.value;
+              setNtSkis((p) => p.map((s, j) => j === i ? { ...s, product: v } : s));
+            },
+            placeholder: "Product\u2026",
+            style: {
+              flex: 1,
+              background: "transparent",
+              border: "none",
+              borderBottom: `1px solid ${C.rule}`,
+              padding: "2px 4px",
+              fontSize: 12,
+              color: C.ink,
+              outline: "none"
+            }
+          }
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setNtSkis((p) => p.filter((_, j) => j !== i)),
+            style: {
+              background: "none",
+              border: "none",
+              color: C.faint,
+              fontSize: 16,
+              cursor: "pointer",
+              lineHeight: 1,
+              flexShrink: 0
+            }
+          },
+          "\xD7"
+        )))))), ntErr && /* @__PURE__ */ React.createElement("div", { style: {
+          color: C.red,
+          fontSize: 12,
+          marginBottom: 12,
+          padding: "8px 10px",
+          background: `${C.red}10`,
+          border: `1px solid ${C.red}`,
+          borderRadius: 6
+        } }, ntErr)),
+        /* @__PURE__ */ React.createElement("div", { style: {
+          padding: "14px 24px",
+          borderTop: `1px solid ${C.rule}`,
+          background: C.surface,
+          flexShrink: 0,
+          display: "flex",
+          gap: 8
+        } }, /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => {
+              setNtErr("");
+              if (!ntSessId) {
+                setNtErr("Choose or create a session first.");
+                return;
+              }
+              if (ntSessId === "__new__" && !ntNewSess.trim()) {
+                setNtErr("Give the new session a name.");
+                return;
+              }
+              let sessId = ntSessId;
+              let updatedEvent = { ...event };
+              if (ntSessId === "__new__") {
+                const newSess = {
+                  id: uid(),
+                  name: ntNewSess.trim(),
+                  tests: [],
+                  snowTemps: [],
+                  airTemps: [],
+                  createdAt: nowStr(),
+                  startedAt: nowStr()
+                };
+                updatedEvent = {
+                  ...updatedEvent,
+                  sessions: [...updatedEvent.sessions || [], newSess]
+                };
+                sessId = newSess.id;
+              }
+              const catLabel = SCHED_TEST_TYPES.find((t) => t.id === ntCat)?.label || ntCat;
+              const name = ntName.trim() || (ntType ? `${catLabel} ${ntType}` : `${catLabel} Test`);
+              const skis = ntSkis.map((s) => ({
+                id: s.id,
+                product: s.product || "",
+                application: s.application || "",
+                waxForm: s.waxForm || "",
+                notes: s.notes || "",
+                standing: "Active",
+                ratings: {},
+                photos: [],
+                raterScores: [],
+                feelNotes: ""
+              }));
+              const testers = ntTesters.split(",").map((t) => t.trim()).filter(Boolean);
+              const newTest = {
+                id: uid(),
+                name,
+                category: ntCat,
+                type: ntType || "",
+                testers,
+                skis,
+                rounds: [],
+                loserRounds: [],
+                glideOutRuns: [],
+                snowTemps: [],
+                airTemps: [],
+                notes: "",
+                createdAt: nowStr()
+              };
+              updatedEvent = {
+                ...updatedEvent,
+                sessions: (updatedEvent.sessions || []).map(
+                  (s) => s.id === sessId ? { ...s, tests: [...s.tests || [], newTest] } : s
+                )
+              };
+              onUpdate(updatedEvent);
+              setSelTest({ sessId, testId: newTest.id });
+              setPanel(null);
+            },
+            style: {
+              flex: 2,
+              padding: "11px 0",
+              borderRadius: 7,
+              border: "none",
+              background: C.ink,
+              color: C.bg,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer"
+            }
+          },
+          "Create Test"
+        ), /* @__PURE__ */ React.createElement(
+          "button",
+          {
+            onClick: () => setPanel(null),
+            style: {
+              flex: 1,
+              padding: "11px 0",
+              borderRadius: 7,
+              border: `1px solid ${C.rule}`,
+              background: "transparent",
+              color: C.mid,
+              fontSize: 13,
+              cursor: "pointer"
+            }
+          },
+          "Cancel"
+        ))
       )
     ));
   }
