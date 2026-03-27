@@ -1,6 +1,8 @@
 #!/bin/bash
 # WaxLab — Netlify build script
-# Injects credentials from Netlify env vars into config.js
+# Injects Supabase + Google credentials into config.js.
+# ANTHROPIC_API_KEY is intentionally NOT written here — it is used
+# server-side only in netlify/functions/claude-proxy.js
 
 echo "Writing config.js..."
 
@@ -9,7 +11,6 @@ cat > config.js << CONFIGEOF
 window.WAXLAB_CONFIG = {
   SUPABASE_URL:      "${SUPABASE_URL:-}",
   SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY:-}",
-  ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}",
   GOOGLE_CLIENT_ID:  "${GOOGLE_CLIENT_ID:-}"
 };
 CONFIGEOF
@@ -17,4 +18,4 @@ CONFIGEOF
 echo "Done."
 echo "  SUPABASE_URL:      ${SUPABASE_URL:+set}${SUPABASE_URL:-NOT SET}"
 echo "  SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:+set}${SUPABASE_ANON_KEY:-NOT SET}"
-echo "  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:+set}${ANTHROPIC_API_KEY:-NOT SET}"
+echo "  ANTHROPIC_API_KEY: stays server-side in netlify/functions/claude-proxy.js"
