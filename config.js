@@ -9,5 +9,6 @@
 window.WAXLAB_CONFIG = {
   SUPABASE_URL:      "",   // e.g. "https://abcxyz.supabase.co"
   SUPABASE_ANON_KEY: "",   // your project's public anon key
+  ANTHROPIC_API_KEY: "",   // your Anthropic API key (sk-ant-...)
   GOOGLE_CLIENT_ID:  ""    // optional, only for Google Sheets export
 };
