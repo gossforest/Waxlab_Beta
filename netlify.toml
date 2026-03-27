@@ -6,7 +6,7 @@
 #   ANTHROPIC_API_KEY  — sk-ant-... (server-side only)
 #
 # Optional:
-#   GOOGLE_CLIENT_ID   — only needed if you enable Google Sheets export
+#   GOOGLE_CLIENT_ID   — only needed for Google Sheets export
 
 [build]
   publish = "."
@@ -31,7 +31,7 @@
   [headers.values]
     Cache-Control = "no-store"
 
-# SPA redirect — must be last
+# SPA catch-all — must be last
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
