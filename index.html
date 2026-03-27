@@ -11801,7 +11801,7 @@ Rules:
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch("/api/claude", {
+    const res = await fetch("/.netlify/functions/claude-proxy", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: controller.signal,
@@ -14147,7 +14147,7 @@ Rules:
 - If past winner data is provided, weight those wax products higher when within temp range.
 - If conditions are above 32\xB0F or snow type is spring/wet/granular, include klister in kick.`;
     try {
-      const res = await fetch("/api/claude", {
+      const res = await fetch("/.netlify/functions/claude-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -14156,7 +14156,14 @@ Rules:
           messages: [{ role: "user", content: prompt }]
         })
       });
-      if (!res.ok) throw new Error(`API error ${res.status}`);
+      if (!res.ok) {
+        let body = "";
+        try {
+          body = await res.text();
+        } catch {
+        }
+        throw new Error(`API error ${res.status}: ${body.slice(0, 200)}`);
+      }
       const data = await res.json();
       const raw = (data.content || []).map((b) => b.text || "").join("").trim().replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
       const parsed = JSON.parse(raw);
@@ -24290,7 +24297,7 @@ For each product extract:
 Return an array. If a field is unknown leave it null or empty.
 Only include actual wax products \u2014 skip tools, accessories, brushes, irons.`;
     try {
-      const res = await fetch("/api/claude", {
+      const res = await fetch("/.netlify/functions/claude-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

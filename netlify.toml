@@ -1,9 +1,9 @@
 # ─── WaxLab — Netlify configuration ──────────────────────────────────────────
 #
-# Required environment variables (Netlify → Site configuration → Environment variables):
+# Required environment variables:
 #   SUPABASE_URL       — e.g. https://abcxyz.supabase.co
 #   SUPABASE_ANON_KEY  — your project's public anon key
-#   ANTHROPIC_API_KEY  — sk-ant-... (kept server-side only, never sent to browser)
+#   ANTHROPIC_API_KEY  — sk-ant-... (server-side only)
 #
 # Optional:
 #   GOOGLE_CLIENT_ID   — only needed if you enable Google Sheets export
@@ -12,19 +12,6 @@
   publish = "."
   command = "bash build.sh"
   functions = "netlify/functions"
-
-# API proxy — routes /api/claude to the serverless function
-[[redirects]]
-  from   = "/api/claude"
-  to     = "/.netlify/functions/claude-proxy"
-  status = 200
-
-# Redirect everything else to index.html (single-page app)
-# Must come AFTER the /api redirect
-[[redirects]]
-  from   = "/*"
-  to     = "/index.html"
-  status = 200
 
 # Security headers
 [[headers]]
@@ -43,3 +30,9 @@
   for = "/index.html"
   [headers.values]
     Cache-Control = "no-store"
+
+# SPA redirect — must be last
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
