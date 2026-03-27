@@ -240,3 +240,29 @@ create policy "Public delete" on waxlab_seed_catalog for delete using (true);
 
 -- Realtime: connected clients see catalog updates immediately
 alter publication supabase_realtime add table waxlab_seed_catalog;
+
+
+-- ─── STRUCTURE CATALOG ───────────────────────────────────────────────────────
+-- Per-team hand structure tool catalog. Same pattern as waxlab_catalog.
+-- Stored as a single JSON array per team (team_code is primary key).
+--
+-- Each entry shape (matches STRUCTURE_CATALOG constant and StructureEditForm):
+--   { id, brand, product, pattern, discipline, tempMinC, tempMaxC,
+--     snowTypes[], notes, typicalPasses, createdAt }
+--
+-- The compiled STRUCTURE_CATALOG constant (56 tools) is the offline seed.
+-- Custom entries added by a team are stored here and merged client-side.
+
+create table if not exists waxlab_structure_catalog (
+  team_code   text primary key,
+  data        jsonb not null default '[]',
+  updated_at  timestamptz not null default now()
+);
+
+alter table waxlab_structure_catalog enable row level security;
+
+create policy "Public read"   on waxlab_structure_catalog for select using (true);
+create policy "Public insert" on waxlab_structure_catalog for insert with check (true);
+create policy "Public update" on waxlab_structure_catalog for update using (true);
+
+alter publication supabase_realtime add table waxlab_structure_catalog;

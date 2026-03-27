@@ -1,4 +1,23 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"><meta name="apple-mobile-web-app-capable" content="yes"><title>WaxLab</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"><script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script><script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script><script>window.WAXLAB_CONFIG={};</script></head><body><div id="root"></div><script>const { useState, useEffect, useCallback, useRef, useMemo } = React;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>WaxLab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="/config.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
 const SUPABASE_URL = window.WAXLAB_CONFIG?.SUPABASE_URL || "YOUR_SUPABASE_URL";
 const SUPABASE_ANON_KEY = window.WAXLAB_CONFIG?.SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY";
 const GOOGLE_CLIENT_ID = window.WAXLAB_CONFIG?.GOOGLE_CLIENT_ID || "";
@@ -511,6 +530,38 @@ async function loadStructureCatalog(teamCode) {
 }
 async function saveStructureCatalog(teamCode, entries) {
   lsSet(`waxlab:structcatalog:${teamCode}`, entries);
+  if (db) {
+    db.from("waxlab_structure_catalog").upsert(
+      { team_code: teamCode, data: entries, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
+      { onConflict: "team_code" }
+    ).then(({ error }) => {
+      if (error) console.warn("saveStructureCatalog bg:", error.message);
+    });
+  }
+}
+async function bgSyncStructureCatalog(teamCode, setStructureCatalog) {
+  if (!db) return;
+  try {
+    const result = await db.from("waxlab_structure_catalog").select("data").eq("team_code", teamCode).single();
+    if (result.error || !result.data?.data) return;
+    const remote = result.data.data;
+    const local = lsGet(`waxlab:structcatalog:${teamCode}`) || [];
+    const localMap = Object.fromEntries(local.map((e) => [e.id, e]));
+    let changed = false;
+    remote.forEach((e) => {
+      if (!localMap[e.id]) {
+        localMap[e.id] = e;
+        changed = true;
+      }
+    });
+    if (changed) {
+      const merged = Object.values(localMap);
+      lsSet(`waxlab:structcatalog:${teamCode}`, merged);
+      setStructureCatalog(merged);
+    }
+  } catch (e) {
+    console.warn("bgSyncStructureCatalog:", e.message);
+  }
 }
 async function bgSyncCatalog(teamCode, setCatalog) {
   if (!db) return;
@@ -734,7 +785,7 @@ function enrichCatalogFromWin({ ski, test, session, event, catalog, teamCode, on
     onSave([...all, newEntry]);
   }
 }
-function subscribeToTeam(teamCode, onEventChange, onVocabChange, onFleetChange, onCatalogChange) {
+function subscribeToTeam(teamCode, onEventChange, onVocabChange, onFleetChange, onCatalogChange, onStructureCatalogChange) {
   if (!db) return () => {
   };
   const evCh = db.channel(`waxlab_events:${teamCode}`).on(
@@ -766,11 +817,19 @@ function subscribeToTeam(teamCode, onEventChange, onVocabChange, onFleetChange, 
       if (p.new?.data && onCatalogChange) onCatalogChange(p.new.data);
     }
   ).subscribe();
+  const structCh = db.channel(`waxlab_structure_catalog:${teamCode}`).on(
+    "postgres_changes",
+    { event: "*", schema: "public", table: "waxlab_structure_catalog", filter: `team_code=eq.${teamCode}` },
+    (p) => {
+      if (p.new?.data && onStructureCatalogChange) onStructureCatalogChange(p.new.data);
+    }
+  ).subscribe();
   return () => {
     db.removeChannel(evCh);
     db.removeChannel(vocabCh);
     db.removeChannel(fleetCh);
     db.removeChannel(catalogCh);
+    db.removeChannel(structCh);
   };
 }
 const IDB_DB_NAME = "waxlab-photos";
@@ -1091,7 +1150,7 @@ function SyncStatusBanner({ syncStatus, online, pendingCount }) {
   } }, /* @__PURE__ */ React.createElement("span", { style: { animation: "spin 1s linear infinite", display: "inline-block" } }, "\u21BB"), /* @__PURE__ */ React.createElement("span", null, "Saving\u2026"));
   return null;
 }
-function ProductLibrary({ allEvents, useCelsius, onBack, onImportHistory, catalog, onCatalogSave, teamCode, vocab, onVocabAdd, structureCatalog: structureCatalog2, onStructureCatalogSave }) {
+function ProductLibrary({ allEvents, useCelsius, onBack, onImportHistory, catalog, onCatalogSave, teamCode, vocab, onVocabAdd, structureCatalog, onStructureCatalogSave }) {
   const [tab, setTab] = useState("results");
   return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, "Product Library"), /* @__PURE__ */ React.createElement(
     "button",
@@ -1130,7 +1189,7 @@ function ProductLibrary({ allEvents, useCelsius, onBack, onImportHistory, catalo
   ), tab === "structure" && /* @__PURE__ */ React.createElement(
     StructureCatalogTab,
     {
-      catalog: structureCatalog2 || [],
+      catalog: structureCatalog || [],
       onSave: onStructureCatalogSave,
       vocab,
       onVocabAdd
@@ -13941,7 +14000,7 @@ function PredictPanel({ allEvents, sessionWeather, useCelsius }) {
     border: "1px solid var(--rule)"
   } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, r.product), r.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-mid)", marginTop: 1 } }, r.application), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 3 } }, r.category, " \xB7 ", r.eventName, r.standing === "Runner-Up" ? " \xB7 2nd place" : "", r.airF != null ? ` \xB7 air ${dispTemp(r.airF, useCelsius)}` : "", r.snowF != null ? ` \xB7 snow ${dispTemp(r.snowF, useCelsius)}` : "")), r.comp != null && /* @__PURE__ */ React.createElement(RatingBadge, { score: r.comp, max: r.max })))))));
 }
-function WaxRecommendPanel({ allEvents, session, event, useCelsius, catalog, structureCatalog: structureCatalog2 = [] }) {
+function WaxRecommendPanel({ allEvents, session, event, useCelsius, catalog, structureCatalog = [] }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -14004,7 +14063,7 @@ function WaxRecommendPanel({ allEvents, session, event, useCelsius, catalog, str
   function buildStructureSummary(conds2) {
     const snowF = conds2.snowTempF ?? conds2.airTempF;
     const seedNames = new Set(STRUCTURE_CATALOG.map((s) => `${s.brand} ${s.product}`.toLowerCase()));
-    const customOnly = (structureCatalog2 || []).filter((s) => {
+    const customOnly = (structureCatalog || []).filter((s) => {
       const key = `${s.brand || ""} ${s.product || ""}`.toLowerCase().trim();
       return !seedNames.has(key);
     });
@@ -18889,7 +18948,7 @@ function CopyTestModal({ test, eventSessions = [], currentSessionId, onCopy, onC
     ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: doConfirm }, "Copy \u2192"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: onClose }, "Cancel")))
   );
 }
-function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], allEvents = [], onPromoteEventWeather, activeTestId, onSetActiveTest, eventForecast = null, onUpdateEventForecast, eventSessions = [], onCopyTestToSession, onGoHome, catalog = [], onCatalogSave, event = {} }) {
+function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUnitToggle, teamCode, eventId, fleets = [], allEvents = [], onPromoteEventWeather, activeTestId, onSetActiveTest, eventForecast = null, onUpdateEventForecast, eventSessions = [], onCopyTestToSession, onGoHome, catalog = [], onCatalogSave, structureCatalog = [], event = {} }) {
   const [tab, setTab] = useState("tests");
   const setActiveTestId = onSetActiveTest || (() => {
   });
@@ -19411,7 +19470,7 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
     } }, r.kind))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 12, color: "var(--ink-faint)" } }, r.testName), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)" } }, fmtTime(r.ts))))));
   })()))));
 }
-function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd, allEvents, useCelsius, onUnitToggle, teamCode, fleets = [], activeSessionId, onSetActiveSession, activeTestId, onSetActiveTest, catalog = [], onCatalogSave }) {
+function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd, allEvents, useCelsius, onUnitToggle, teamCode, fleets = [], activeSessionId, onSetActiveSession, activeTestId, onSetActiveTest, catalog = [], onCatalogSave, structureCatalog = [], onStructureCatalogSave }) {
   const [tab, setTab] = useState("sessions");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState(null);
@@ -19469,6 +19528,7 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
         onGoHome: onBack,
         catalog,
         onCatalogSave,
+        structureCatalog,
         event,
         onCopyTestToSession: (destSessionId, copiedTest) => {
           const updatedSessions = (event.sessions || []).map(
@@ -20285,7 +20345,7 @@ function App() {
   const [vocab, setVocab] = useState({});
   const [fleets, setFleets] = useState([]);
   const [catalog, setCatalog] = useState([]);
-  const [structureCatalog2, setStructureCatalog] = useState([]);
+  const [structureCatalog, setStructureCatalog] = useState([]);
   const [view, setView] = useState("home");
   const [activeId, setActiveId] = useState(null);
   const [activeSessionId, setActiveSessionId] = useState(null);
@@ -20339,6 +20399,7 @@ function App() {
     });
     bgSyncVocab(code, (v) => setVocab(v));
     bgSyncCatalog(code, setCatalog);
+    bgSyncStructureCatalog(code, setStructureCatalog);
     const unsub = subscribeToTeam(
       code,
       (change) => {
@@ -20360,6 +20421,10 @@ function App() {
       (updatedCatalog) => {
         lsSet(`waxlab:catalog:${code}`, updatedCatalog);
         setCatalog(updatedCatalog);
+      },
+      (updatedStructCat) => {
+        lsSet(`waxlab:structcatalog:${code}`, updatedStructCat);
+        setStructureCatalog(updatedStructCat);
       }
     );
     unsubscribeRef.current = unsub;
@@ -20423,6 +20488,7 @@ function App() {
     });
     bgSyncVocab(code, (v) => setVocab(v));
     bgSyncCatalog(code, setCatalog);
+    bgSyncStructureCatalog(code, setStructureCatalog);
     if (unsubscribeRef.current) {
       try {
         unsubscribeRef.current();
@@ -20451,6 +20517,10 @@ function App() {
       (updatedCatalog) => {
         lsSet(`waxlab:catalog:${code}`, updatedCatalog);
         setCatalog(updatedCatalog);
+      },
+      (updatedStructCat) => {
+        lsSet(`waxlab:structcatalog:${code}`, updatedStructCat);
+        setStructureCatalog(updatedStructCat);
       }
     );
     unsubscribeRef.current = unsub;
@@ -20721,6 +20791,11 @@ function App() {
         onCatalogSave: async (updated) => {
           setCatalog(updated);
           await saveCatalog(teamCode, updated);
+        },
+        structureCatalog,
+        onStructureCatalogSave: async (updated) => {
+          setStructureCatalog(updated);
+          await saveStructureCatalog(teamCode, updated);
         }
       }
     ));
@@ -20750,7 +20825,7 @@ function App() {
           setCatalog(updated);
           await saveCatalog(teamCode, updated);
         },
-        structureCatalog: structureCatalog2,
+        structureCatalog,
         onStructureCatalogSave: async (updated) => {
           setStructureCatalog(updated);
           await saveStructureCatalog(teamCode, updated);
@@ -24591,4 +24666,7 @@ Only include actual wax products \u2014 skip tools, accessories, brushes, irons.
     )))));
   }), filtered.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.faint, fontSize: 13 } }, "No products match your search.")));
 }
-</script></body></html>
+
+</script>
+</body>
+</html>
