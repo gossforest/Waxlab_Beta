@@ -1,15 +1,9 @@
 # ─── WaxLab — Netlify configuration ──────────────────────────────────────────
 #
-# How it works:
-#   1. Every push to your GitHub repo triggers a Netlify build.
-#   2. The build command writes your Supabase credentials (stored as Netlify
-#      environment variables) into a config.js file that the app loads at runtime.
-#   3. The finished site is served from the repo root.
-#
-# Required environment variables (set in Netlify dashboard → Site settings →
-# Environment variables):
+# Required environment variables (Netlify → Site configuration → Environment variables):
 #   SUPABASE_URL       — e.g. https://abcxyz.supabase.co
 #   SUPABASE_ANON_KEY  — your project's public anon key
+#   ANTHROPIC_API_KEY  — sk-ant-... (kept server-side only, never sent to browser)
 #
 # Optional:
 #   GOOGLE_CLIENT_ID   — only needed if you enable Google Sheets export
@@ -17,8 +11,16 @@
 [build]
   publish = "."
   command = "bash build.sh"
+  functions = "netlify/functions"
 
-# Redirect everything to index.html (single-page app)
+# API proxy — routes /api/claude to the serverless function
+[[redirects]]
+  from   = "/api/claude"
+  to     = "/.netlify/functions/claude-proxy"
+  status = 200
+
+# Redirect everything else to index.html (single-page app)
+# Must come AFTER the /api redirect
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
@@ -32,7 +34,6 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy        = "strict-origin-when-cross-origin"
 
-# Cache the app shell aggressively, but not config.js (it changes with env vars)
 [[headers]]
   for = "/config.js"
   [headers.values]

@@ -21,7 +21,6 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 const SUPABASE_URL = window.WAXLAB_CONFIG?.SUPABASE_URL || "YOUR_SUPABASE_URL";
 const SUPABASE_ANON_KEY = window.WAXLAB_CONFIG?.SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY";
 const GOOGLE_CLIENT_ID = window.WAXLAB_CONFIG?.GOOGLE_CLIENT_ID || "";
-const ANTHROPIC_API_KEY = window.WAXLAB_CONFIG?.ANTHROPIC_API_KEY || "";
 const supabaseConfigured = SUPABASE_URL !== "YOUR_SUPABASE_URL" && SUPABASE_URL !== "";
 const db = supabaseConfigured && window.supabase ? (() => {
   try {
@@ -11802,9 +11801,9 @@ Rules:
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("/api/claude", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "x-api-key": ANTHROPIC_API_KEY },
+      headers: { "Content-Type": "application/json" },
       signal: controller.signal,
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
@@ -14148,9 +14147,9 @@ Rules:
 - If past winner data is provided, weight those wax products higher when within temp range.
 - If conditions are above 32\xB0F or snow type is spring/wet/granular, include klister in kick.`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/claude", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "x-api-key": ANTHROPIC_API_KEY },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 1100,
@@ -24291,9 +24290,9 @@ For each product extract:
 Return an array. If a field is unknown leave it null or empty.
 Only include actual wax products \u2014 skip tools, accessories, brushes, irons.`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/claude", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", "x-api-key": ANTHROPIC_API_KEY },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 2e3,
