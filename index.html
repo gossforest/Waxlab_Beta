@@ -765,9 +765,12 @@ async function loadRemoteSeedStructureCatalog() {
     try {
       const { data, error } = await db.from("waxlab_seed_structure_catalog").select("seed_id,data").order("seed_id");
       if (!error && data?.length > 0) {
-        const entries = data.map((r) => ({ ...r.data, seed_id: r.seed_id, _seed: true }));
-        lsSet(REMOTE_STRUCT_SEED_KEY, entries);
-        return entries;
+        const remote = data.map((r) => ({ ...r.data, seed_id: r.seed_id, _seed: true }));
+        const remoteIds = new Set(remote.map((e) => e.id || e.seed_id));
+        const compiledOnly = STRUCTURE_CATALOG.filter((e) => !remoteIds.has(e.id) && !remoteIds.has(`speedy-${e.product?.toLowerCase().replace(/\s+/g, "-")}`));
+        const merged = [...remote, ...compiledOnly];
+        lsSet(REMOTE_STRUCT_SEED_KEY, merged);
+        return merged;
       }
     } catch (e) {
       console.warn("loadRemoteSeedStructureCatalog:", e.message);
@@ -18835,8 +18838,8 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
         if (f) setNewForm(f);
       },
       onCommit: (v) => onVocabAdd?.("products", [v]),
-      suggestions: (test?.type || newTestType) === "Hand structure" ? vocab?.structures || [] : vocab?.products || [],
-      placeholder: (test?.type || newTestType) === "Hand structure" ? "e.g. Speedy Z1N-36\u2026" : "Wax product\u2026",
+      suggestions: test?.type === "Hand structure" ? vocab?.structures || [] : vocab?.products || [],
+      placeholder: test?.type === "Hand structure" ? "e.g. Speedy Z1N-36\u2026" : "Wax product\u2026",
       style: { marginBottom: 6 }
     }
   ), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category: test.category, value: newForm, onChange: setNewForm })), /* @__PURE__ */ React.createElement(
@@ -19288,7 +19291,7 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
   const [creatingTest, setCreatingTest] = useState(false);
   const [newTestName, setNewTestName] = useState("");
   const [newTestCategory, setNewTestCategory] = useState("glide");
-  const [newTestType2, setNewTestType] = useState("");
+  const [newTestType, setNewTestType] = useState("");
   const [copyTestMode, setCopyTestMode] = useState(false);
   const [populatingTestId, setPopulatingTestId] = useState(null);
   const [deadlinePickerTest, setDeadlinePickerTest] = useState(null);
@@ -19710,7 +19713,7 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
     /* @__PURE__ */ React.createElement("option", { value: "glide" }, "Glide"),
     /* @__PURE__ */ React.createElement("option", { value: "kick" }, "Kick"),
     /* @__PURE__ */ React.createElement("option", { value: "glide-out" }, "Glide Out")
-  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Type"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: newTestType2, onChange: (e) => setNewTestType(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), (newTestCategory === "glide" || newTestCategory === "glide-out" ? ["Topcoat", "Paraffin", "Hand structure", "Grind"] : ["Binder", "Mid layer", "Top layer", "Full stack"]).map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o))))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: () => createTest(newTestCategory, newTestType2) }, "Create Test"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: () => {
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Type"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: newTestType, onChange: (e) => setNewTestType(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), (newTestCategory === "glide" || newTestCategory === "glide-out" ? ["Topcoat", "Paraffin", "Hand structure", "Grind"] : ["Binder", "Mid layer", "Top layer", "Full stack"]).map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o))))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: () => createTest(newTestCategory, newTestType) }, "Create Test"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: () => {
     setCreatingTest(false);
     setCopyTestMode(false);
   } }, "Cancel"))) : /* @__PURE__ */ React.createElement(
