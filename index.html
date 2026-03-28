@@ -846,8 +846,14 @@ async function loadSeedEnrichments() {
   }
 }
 function enrichCatalogFromWin({ ski, test, session, event, catalog, teamCode, onSave }) {
-  if (!ski?.product?.trim()) return;
-  const product = ski.product.trim();
+  const layers = ski.layers || [];
+  const kl = keyLayer(layers, test?.category || "glide");
+  const keyLayerObj = layers.find((l) => l.role === kl?.role) || null;
+  const keyComps = keyLayerObj?.components?.filter((c) => c.product) || [];
+  const combinationStr = keyComps.length > 1 ? componentsSummary(keyComps) : kl?.product?.trim() || ski?.product?.trim() || "";
+  const primaryProduct = keyComps[0]?.product?.trim() || kl?.product?.trim() || ski?.product?.trim() || "";
+  if (!primaryProduct && !combinationStr) return;
+  const product = combinationStr || primaryProduct;
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const sessSnow = (session?.snowTemps || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
   const testSnow = (test?.snowTemps || []).slice().sort((a, b) => new Date(b.ts) - new Date(a.ts));
@@ -870,7 +876,13 @@ function enrichCatalogFromWin({ ski, test, session, event, catalog, teamCode, on
     snowType,
     grooming,
     category: test?.category || null,
-    waxForm: ski?.waxForm || null
+    waxForm: ski?.waxForm || null,
+    combination: combinationStr || null,
+    // full mix string e.g. "Rode Endurance (50%) + Rode R50 (50%)"
+    layers: layers.filter((l) => l.product || l.components?.some((c) => c.product)).map((l) => ({
+      role: l.role,
+      product: componentsSummary(l.components) || l.product || ""
+    })) || []
   };
   const snowF = snowTempF ?? airTempF;
   const winMin = snowF != null ? Math.round(snowF - 2) : null;
@@ -933,6 +945,28 @@ function enrichCatalogFromWin({ ski, test, session, event, catalog, teamCode, on
       _fromWin: true
     };
     onSave([...all, newEntry]);
+  }
+  if (keyComps.length > 1) {
+    keyComps.slice(1).forEach((comp) => {
+      if (!comp.product?.trim()) return;
+      enrichCatalogFromWin({
+        ski: {
+          ...ski,
+          product: comp.product.trim(),
+          layers: [{
+            ...keyLayerObj,
+            components: [{ product: comp.product, ratio: "" }],
+            product: comp.product
+          }]
+        },
+        test,
+        session,
+        event,
+        catalog: onSave._lastCatalog || catalog,
+        teamCode,
+        onSave
+      });
+    });
   }
 }
 function subscribeToTeam(teamCode, onEventChange, onVocabChange, onFleetChange, onCatalogChange, onStructureCatalogChange, onMessageChange) {
@@ -11167,6 +11201,81 @@ function TA({ label, value, onChange, placeholder, rows, style, mic }) {
 }
 const GLIDE_FORMS = ["block", "powder", "liquid", "combination"];
 const KICK_FORMS = ["hard", "klister", "combination"];
+const LAYER_ROLES = {
+  glide: ["base", "paraffin", "topcoat"],
+  "glide-out": ["base", "paraffin", "topcoat"],
+  kick: ["binder", "mid layer", "top layer"],
+  structure: ["structure"]
+};
+const LAYER_ROLE_LABELS = {
+  base: "Base / Binder",
+  paraffin: "Paraffin",
+  topcoat: "Topcoat",
+  binder: "Binder",
+  "mid layer": "Mid Layer",
+  "top layer": "Top Layer",
+  structure: "Structure Tool"
+};
+function roleVocabKey(role) {
+  if (role === "structure") return "structures";
+  if (role === "binder" || role === "mid layer" || role === "top layer") return "kickProducts";
+  return "glideProducts";
+}
+function roleWaxForms(role) {
+  if (role === "structure") return [];
+  if (role === "base") return ["block", "liquid", "powder", "combination"];
+  if (role === "paraffin") return ["block", "powder", "liquid", "combination"];
+  if (role === "topcoat") return ["powder", "liquid", "spray", "combination"];
+  if (role === "binder") return ["hard", "klister", "combination"];
+  if (role === "mid layer") return ["hard", "klister", "combination"];
+  if (role === "top layer") return ["hard", "klister", "combination"];
+  return [];
+}
+function componentsSummary(components) {
+  if (!components?.length) return "";
+  return components.filter((c) => c.product).map(
+    (c) => c.ratio ? `${c.product} (${c.ratio})` : c.product
+  ).join(" + ");
+}
+function layersSummary(layers) {
+  if (!layers?.length) return "";
+  return layers.filter((l) => l.product || l.components?.some((c) => c.product)).map((l) => {
+    const cs = componentsSummary(l.components);
+    return cs || l.product || "";
+  }).filter(Boolean).join(" / ");
+}
+function keyLayer(layers, category) {
+  if (!layers?.length) return null;
+  const isKick = category === "kick";
+  const role = isKick ? "top layer" : "topcoat";
+  const layer = layers.find((l) => l.role === role && (l.product || l.components?.some((c) => c.product))) || layers.filter((l) => l.product || l.components?.some((c) => c.product)).slice(-1)[0];
+  if (!layer) return null;
+  const firstComp = layer.components?.find((c) => c.product);
+  return { ...layer, product: firstComp?.product || layer.product || "" };
+}
+function migrateSkiToLayers(ski, category, testType) {
+  if (ski.layers?.length) return ski.layers;
+  if (!ski.product) return [];
+  const isStruct = testType === "Hand structure";
+  if (isStruct) {
+    return [{
+      role: "structure",
+      components: [{ product: ski.product, ratio: "" }],
+      product: ski.product,
+      waxForm: "",
+      application: ski.application || ""
+    }];
+  }
+  const isKick = category === "kick";
+  const role = isKick ? "top layer" : "topcoat";
+  return [{
+    role,
+    components: [{ product: ski.product, ratio: "" }],
+    product: ski.product,
+    waxForm: ski.waxForm || "",
+    application: ski.application || ""
+  }];
+}
 function getProductForms() {
   return lsGet("waxlab:product_forms") || {};
 }
@@ -11179,6 +11288,313 @@ function rememberProductForm(product, form) {
 function lookupProductForm(product) {
   if (!product) return null;
   return getProductForms()[product.trim().toLowerCase()] || null;
+}
+function SkiLayerEditor({ layers = [], category = "glide", testType = "", vocab, onChange }) {
+  const isStruct = testType === "Hand structure";
+  const isKick = category === "kick";
+  const roles = LAYER_ROLES[isStruct ? "structure" : category] || LAYER_ROLES.glide;
+  function setLayer(idx, patch) {
+    const next = layers.map((l, i) => i === idx ? { ...l, ...patch } : l);
+    onChange(next);
+  }
+  function setComponent(layerIdx, compIdx, patch) {
+    const next = layers.map((l, i) => {
+      if (i !== layerIdx) return l;
+      const comps = (l.components || [{ product: l.product || "", ratio: "" }]).map(
+        (c, j) => j === compIdx ? { ...c, ...patch } : c
+      );
+      const summary = componentsSummary(comps);
+      return { ...l, components: comps, product: summary };
+    });
+    onChange(next);
+  }
+  function addComponent(layerIdx) {
+    const next = layers.map((l, i) => {
+      if (i !== layerIdx) return l;
+      const comps = [
+        ...l.components || [{ product: l.product || "", ratio: "" }],
+        { product: "", ratio: "" }
+      ];
+      return { ...l, components: comps };
+    });
+    onChange(next);
+  }
+  function removeComponent(layerIdx, compIdx) {
+    const next = layers.map((l, i) => {
+      if (i !== layerIdx) return l;
+      const comps = (l.components || []).filter((_, j) => j !== compIdx);
+      const summary = componentsSummary(comps);
+      return { ...l, components: comps, product: summary };
+    });
+    onChange(next);
+  }
+  function addLayer() {
+    const usedRoles = new Set(layers.map((l) => l.role));
+    const next = roles.find((r) => !usedRoles.has(r)) || roles[roles.length - 1];
+    onChange([...layers, {
+      role: next,
+      components: [{ product: "", ratio: "" }],
+      product: "",
+      waxForm: "",
+      application: ""
+    }]);
+  }
+  function removeLayer(idx) {
+    onChange(layers.filter((_, i) => i !== idx));
+  }
+  function moveLayer(idx, dir) {
+    const next = [...layers];
+    const swap = idx + dir;
+    if (swap < 0 || swap >= next.length) return;
+    [next[idx], next[swap]] = [next[swap], next[idx]];
+    onChange(next);
+  }
+  function getComponents(layer) {
+    if (layer.components?.length) return layer.components;
+    return [{ product: layer.product || "", ratio: "" }];
+  }
+  const C = {
+    surface: "var(--paper-2)",
+    surface3: "var(--paper-3)",
+    rule: "var(--rule)",
+    ink: "var(--ink)",
+    mid: "var(--ink-mid)",
+    faint: "var(--ink-faint)",
+    blue: "var(--blue)"
+  };
+  return /* @__PURE__ */ React.createElement("div", null, layers.map((layer, idx) => {
+    const vKey = roleVocabKey(layer.role);
+    const sugg = vocab?.[vKey] || vocab?.products || [];
+    const forms = roleWaxForms(layer.role);
+    const comps = getComponents(layer);
+    return /* @__PURE__ */ React.createElement("div", { key: idx, style: {
+      background: C.surface,
+      border: `1px solid ${C.rule}`,
+      borderLeft: `3px solid ${C.blue}`,
+      borderRadius: 7,
+      padding: "10px 12px",
+      marginBottom: 8
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 8 } }, /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        value: layer.role,
+        onChange: (e) => setLayer(idx, { role: e.target.value, waxForm: "" }),
+        style: {
+          flex: 1,
+          background: C.surface3,
+          border: `1px solid ${C.rule}`,
+          borderRadius: 5,
+          padding: "5px 8px",
+          fontSize: 12,
+          fontWeight: 700,
+          color: C.ink
+        }
+      },
+      roles.map((r) => /* @__PURE__ */ React.createElement("option", { key: r, value: r }, LAYER_ROLE_LABELS[r] || r)),
+      !roles.includes(layer.role) && /* @__PURE__ */ React.createElement("option", { value: layer.role }, layer.role)
+    ), layers.length > 1 && idx > 0 && /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => moveLayer(idx, -1),
+        style: {
+          background: "none",
+          border: `1px solid ${C.rule}`,
+          borderRadius: 4,
+          fontSize: 12,
+          cursor: "pointer",
+          color: C.mid,
+          padding: "2px 7px",
+          minHeight: 26
+        }
+      },
+      "\u2191"
+    ), layers.length > 1 && idx < layers.length - 1 && /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => moveLayer(idx, 1),
+        style: {
+          background: "none",
+          border: `1px solid ${C.rule}`,
+          borderRadius: 4,
+          fontSize: 12,
+          cursor: "pointer",
+          color: C.mid,
+          padding: "2px 7px",
+          minHeight: 26
+        }
+      },
+      "\u2193"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => removeLayer(idx),
+        style: {
+          background: "none",
+          border: "none",
+          color: "var(--red)",
+          fontSize: 18,
+          cursor: "pointer",
+          padding: "0 3px",
+          lineHeight: 1
+        }
+      },
+      "\xD7"
+    )), comps.map((comp, ci) => /* @__PURE__ */ React.createElement("div", { key: ci, style: {
+      display: "flex",
+      gap: 6,
+      alignItems: "flex-start",
+      marginBottom: 6
+    } }, ci > 0 && /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 10,
+      fontWeight: 700,
+      color: C.faint,
+      fontFamily: "'IBM Plex Mono',monospace",
+      paddingTop: 10,
+      flexShrink: 0
+    } }, "+"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement(
+      ACI,
+      {
+        label: ci === 0 ? LAYER_ROLE_LABELS[layer.role] || layer.role : "Mix with",
+        value: comp.product,
+        onChange: (v) => setComponent(idx, ci, { product: v }),
+        onCommit: () => {
+        },
+        suggestions: sugg,
+        placeholder: isStruct ? "e.g. SRB LM" : isKick ? "e.g. Rode B17" : "e.g. Vauhti HF"
+      }
+    )), comps.length > 1 && /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, width: 72 } }, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: C.faint,
+      fontFamily: "'IBM Plex Mono',monospace",
+      textTransform: "uppercase",
+      letterSpacing: "0.07em",
+      marginBottom: 4
+    } }, "Ratio"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        value: comp.ratio || "",
+        onChange: (e) => setComponent(idx, ci, { ratio: e.target.value }),
+        placeholder: "50%",
+        style: {
+          width: "100%",
+          background: C.surface3,
+          border: `1px solid ${C.rule}`,
+          borderRadius: 5,
+          padding: "7px 6px",
+          fontSize: 12,
+          color: C.ink,
+          fontFamily: "'IBM Plex Mono',monospace",
+          boxSizing: "border-box"
+        }
+      }
+    )), comps.length > 1 && /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => removeComponent(idx, ci),
+        style: {
+          background: "none",
+          border: "none",
+          color: "var(--red)",
+          fontSize: 16,
+          cursor: "pointer",
+          padding: "0 2px",
+          paddingTop: 8,
+          flexShrink: 0
+        }
+      },
+      "\xD7"
+    ))), !isStruct && /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => addComponent(idx),
+        style: {
+          fontSize: 11,
+          fontWeight: 600,
+          color: C.blue,
+          background: "none",
+          border: `1px solid ${C.blue}`,
+          borderRadius: 5,
+          padding: "3px 10px",
+          cursor: "pointer",
+          marginBottom: 8
+        }
+      },
+      "+ Mix another product"
+    ), forms.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 6 } }, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
+      color: C.faint,
+      marginBottom: 4,
+      fontFamily: "'IBM Plex Mono',monospace"
+    } }, "Form"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, flexWrap: "wrap" } }, forms.map((f) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: f,
+        type: "button",
+        onClick: () => setLayer(idx, { waxForm: layer.waxForm === f ? "" : f }),
+        style: {
+          padding: "4px 11px",
+          borderRadius: 16,
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: "pointer",
+          border: "1px solid",
+          borderColor: layer.waxForm === f ? C.blue : C.rule,
+          background: layer.waxForm === f ? C.blue : C.surface3,
+          color: layer.waxForm === f ? "#fff" : C.mid,
+          textTransform: "capitalize",
+          minHeight: 28
+        }
+      },
+      f
+    )))), /* @__PURE__ */ React.createElement(
+      ACI,
+      {
+        label: "Application",
+        value: layer.application || "",
+        onChange: (v) => setLayer(idx, { application: v }),
+        suggestions: vocab?.applications || [],
+        placeholder: isStruct ? "e.g. 3 passes tip-to-tail" : isKick ? "Cork smooth, warm\u2026" : "Iron temp, cork, brush\u2026"
+      }
+    ));
+  }), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: addLayer,
+      style: {
+        width: "100%",
+        padding: "8px 0",
+        border: `1px dashed ${C.rule}`,
+        borderRadius: 7,
+        background: "transparent",
+        fontSize: 12,
+        fontWeight: 600,
+        color: C.mid,
+        cursor: "pointer"
+      }
+    },
+    "+ Add Layer"
+  ));
+}
+function SkiLayerStack({ layers = [], isBlind = false }) {
+  if (!layers.length) return null;
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, marginTop: 4 } }, layers.map((l, idx) => {
+    const comps = l.components?.filter((c) => c.product) || (l.product ? [{ product: l.product }] : []);
+    const summary = componentsSummary(comps) || l.product || "";
+    return /* @__PURE__ */ React.createElement("div", { key: idx, style: { display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      letterSpacing: "0.07em",
+      textTransform: "uppercase",
+      color: "var(--ink-faint)",
+      fontFamily: "'IBM Plex Mono',monospace",
+      minWidth: 60,
+      flexShrink: 0
+    } }, LAYER_ROLE_LABELS[l.role] || l.role), !isBlind && summary && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-mid)", fontWeight: 600 } }, summary), !isBlind && l.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: l.waxForm }));
+  }));
 }
 function WaxFormPicker({ category, value, onChange, style }) {
   const forms = category === "kick" ? KICK_FORMS : GLIDE_FORMS;
@@ -11769,6 +12185,71 @@ function ClipboardIcon({ size = 24, color = "currentColor" }) {
 }
 function ThermIcon({ size = 16, color = "currentColor" }) {
   return /* @__PURE__ */ React.createElement(Svg, { size, color }, /* @__PURE__ */ React.createElement("path", { d: "M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" }));
+}
+function canNotify() {
+  return typeof Notification !== "undefined" && Notification.permission === "granted";
+}
+function fireMessageNotification(msg, teamCode) {
+  if (!canNotify()) return;
+  const type = MSG_TYPES.find((t) => t.id === msg.type) || MSG_TYPES[0];
+  const tabHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+  if (msg.type !== "alert" && !tabHidden) return;
+  const title = `${type.label} \xB7 ${teamCode}`;
+  const body = [msg.author && `${msg.author}:`, msg.text].filter(Boolean).join(" ");
+  const notif = new Notification(title, {
+    body,
+    tag: `waxlab-board-${msg.id}`,
+    renotify: true,
+    icon: "/favicon.ico",
+    silent: msg.type === "note"
+    // notes are silent; alerts + wax calls make sound
+  });
+  notif.onclick = () => {
+    window.focus();
+    notif.close();
+  };
+}
+function useNotificationPermission() {
+  const [permission, setPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "denied"
+  );
+  function request() {
+    if (typeof Notification === "undefined") return;
+    Notification.requestPermission().then((p) => setPermission(p)).catch(() => {
+    });
+  }
+  return { permission, request };
+}
+function RadioIcon({ size = 16, color = "currentColor" }) {
+  return /* @__PURE__ */ React.createElement(Svg, { size, color }, /* @__PURE__ */ React.createElement("path", { d: "M4.9 19.1C1 15.2 1 8.8 4.9 4.9" }), /* @__PURE__ */ React.createElement("path", { d: "M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "12", cy: "12", r: "2" }), /* @__PURE__ */ React.createElement("path", { d: "M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" }), /* @__PURE__ */ React.createElement("path", { d: "M19.1 4.9C23 8.8 23 15.1 19.1 19" }));
+}
+function AlertTriIcon({ size = 16, color = "currentColor" }) {
+  return /* @__PURE__ */ React.createElement(Svg, { size, color }, /* @__PURE__ */ React.createElement("path", { d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" }), /* @__PURE__ */ React.createElement("path", { d: "M12 9v4" }), /* @__PURE__ */ React.createElement("path", { d: "M12 17h.01" }));
+}
+function SendIcon({ size = 16, color = "currentColor" }) {
+  return /* @__PURE__ */ React.createElement(Svg, { size, color }, /* @__PURE__ */ React.createElement("path", { d: "m22 2-7 20-4-9-9-4Z" }), /* @__PURE__ */ React.createElement("path", { d: "M22 2 11 13" }));
+}
+function MessagesBadge({ count, color = "var(--red)" }) {
+  if (!count) return null;
+  return /* @__PURE__ */ React.createElement("span", { style: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    background: color,
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: 800,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0 3px",
+    fontFamily: "'IBM Plex Mono',monospace",
+    letterSpacing: 0,
+    lineHeight: 1
+  } }, count > 9 ? "9+" : count);
 }
 function MicButton({ onText, style }) {
   const { listening, supported, start, stop } = useMic((transcript) => {
@@ -13122,9 +13603,12 @@ function calcGlideOutResults(comparisons, skis) {
   return entries.map((e) => ({
     skiId: e.id,
     product: skis?.find((s) => s.id === e.id)?.product || "",
+    layers: skis?.find((s) => s.id === e.id)?.layers || [],
     application: skis?.find((s) => s.id === e.id)?.application || "",
     cmGap: Math.round((best - e.avg) * 10) / 10,
-    compCount: e.count
+    compCount: e.count,
+    // Confidence: gap vs noise — flag if leading by < 1cm net with < 2 comparisons
+    uncertain: best - e.avg < 1 && e.count < 2
   }));
 }
 function suggestNextComparison(comparisons, skis) {
@@ -13143,21 +13627,37 @@ function suggestNextComparison(comparisons, skis) {
   const [a, b] = sorted[0][0].split("|");
   return { skiA: a, skiB: b, timesRun: sorted[0][1] };
 }
-function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamTesters = [] }) {
+function GlideOutSkiLabel({ ski, isBlind, style = {} }) {
+  if (!ski) return null;
+  if (isBlind) return /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontWeight: 700, ...style } }, ski.id);
+  const layers = ski.layers?.filter((l) => l.product || l.components?.some((c) => c.product)) || [];
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "inline-flex", flexDirection: "column", gap: 1, ...style } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontWeight: 700, fontSize: 13 } }, ski.id), layers.length > 0 ? layers.map((l, i) => {
+    const comps = l.components?.filter((c) => c.product);
+    const prod = comps?.length ? componentsSummary(comps) : l.product;
+    return /* @__PURE__ */ React.createElement("span", { key: i, style: { fontSize: 10, color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("span", { style: {
+      fontFamily: "'IBM Plex Mono',monospace",
+      fontSize: 8,
+      textTransform: "uppercase",
+      letterSpacing: "0.06em"
+    } }, LAYER_ROLE_LABELS[l.role] || l.role), " ", prod);
+  }) : ski.product ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, ski.product) : null);
+}
+function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamTesters = [], useCelsius = false }) {
   const [open, setOpen] = useState(!(comp.legA?.cmAhead != null && comp.legB?.cmAhead != null));
-  const skiLabel = (id) => {
-    if (isBlind) return id;
-    const s = skis?.find((x) => x.id === id);
-    return s?.product ? `${id} \u2014 ${s.product}` : id;
-  };
+  const skiA = skis?.find((s) => s.id === comp.skiA);
+  const skiB = skis?.find((s) => s.id === comp.skiB);
   const complete = comp.legA?.cmAhead != null && comp.legB?.cmAhead != null;
   const netA = complete ? (comp.legA.cmAhead - comp.legB.cmAhead) / 2 : null;
-  const faster = netA == null ? null : Math.abs(netA) < 0.5 ? null : netA > 0 ? comp.skiA : comp.skiB;
   const gap = netA == null ? null : Math.abs(netA);
+  const faster = netA == null ? null : gap < 0.5 ? null : netA > 0 ? comp.skiA : comp.skiB;
+  const isConfidence = comp.isConfidence || false;
   function updLeg(leg, field, val) {
     onUpdate({ ...comp, [leg]: { ...comp[leg] || {}, [field]: val } });
   }
-  return /* @__PURE__ */ React.createElement("div", { className: "card", style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "card", style: {
+    marginBottom: 8,
+    borderLeft: isConfidence ? "3px solid var(--amber)" : void 0
+  } }, /* @__PURE__ */ React.createElement(
     "div",
     {
       onClick: () => setOpen((o) => !o),
@@ -13169,19 +13669,159 @@ function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamT
         cursor: "pointer"
       }
     },
-    /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, fontSize: 14 } }, comp.label || `Comparison ${comp.num}`), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginLeft: 8 } }, comp.skiA, " vs ", comp.skiB), comp.testers && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)", marginLeft: 8 } }, "\xB7 ", comp.testers)),
-    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, complete && /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+    /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, fontSize: 14 } }, comp.label || `Comparison ${comp.num}`), isConfidence && /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      letterSpacing: "0.07em",
+      textTransform: "uppercase",
+      color: "var(--amber)",
+      fontFamily: "'IBM Plex Mono',monospace",
+      padding: "1px 5px",
+      border: "1px solid var(--amber)",
+      borderRadius: 3
+    } }, "confirm"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)" } }, comp.skiA, " vs ", comp.skiB), comp.testers && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, "\xB7 ", comp.testers), comp.course && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, "\xB7 ", comp.course)), (comp.snowTempF != null || comp.airTempF != null) && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" } }, comp.snowTempF != null && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "snow ", dispTemp(comp.snowTempF, useCelsius)), comp.airTempF != null && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "air ", dispTemp(comp.airTempF, useCelsius)))),
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0 } }, complete && /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
       fontSize: 13,
       fontWeight: 700,
-      color: gap < 1 ? "var(--ink-faint)" : "var(--green)"
-    } }, faster ? `${faster} +${gap.toFixed(1)}cm` : "Even"), !complete && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { fontSize: 9, color: "var(--amber)" } }, "in progress"), /* @__PURE__ */ React.createElement(ChevronIcon, { size: 14, color: "var(--ink-faint)", up: open }))
-  ), open && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 14px", borderTop: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { style: {
-    marginTop: 12,
+      color: gap < 1 ? "var(--amber)" : "var(--green)"
+    } }, faster ? `${faster} +${gap.toFixed(1)}cm` : "Even", gap > 0.1 && gap < 1 && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, marginLeft: 4, opacity: 0.6 } }, "~")), !complete && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { fontSize: 9, color: "var(--amber)" } }, "in progress"), /* @__PURE__ */ React.createElement(ChevronIcon, { size: 14, color: "var(--ink-faint)", up: open }))
+  ), open && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 14px", borderTop: "1px solid var(--rule)" } }, !isBlind && (skiA?.layers?.length > 0 || skiB?.layers?.length > 0) && /* @__PURE__ */ React.createElement("div", { style: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+    margin: "10px 0",
+    padding: "8px 10px",
+    background: "var(--paper-3)",
+    borderRadius: 6
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
+    fontFamily: "'IBM Plex Mono',monospace",
+    marginBottom: 3
+  } }, comp.skiA), skiA && /* @__PURE__ */ React.createElement(SkiLayerStack, { layers: skiA.layers || [], isBlind: false })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
+    fontFamily: "'IBM Plex Mono',monospace",
+    marginBottom: 3
+  } }, comp.skiB), skiB && /* @__PURE__ */ React.createElement(SkiLayerStack, { layers: skiB.layers || [], isBlind: false }))), /* @__PURE__ */ React.createElement("div", { style: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr auto",
+    gap: 8,
+    margin: "8px 0 10px"
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
+    fontFamily: "'IBM Plex Mono',monospace",
+    marginBottom: 3
+  } }, "Course / Section"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: comp.course || "",
+      onChange: (e) => onUpdate({ ...comp, course: e.target.value }),
+      placeholder: "e.g. B-sector",
+      style: {
+        width: "100%",
+        background: "var(--paper-3)",
+        border: "1px solid var(--rule)",
+        borderRadius: 5,
+        padding: "6px 8px",
+        fontSize: 12,
+        color: "var(--ink)",
+        boxSizing: "border-box"
+      }
+    }
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
+    fontFamily: "'IBM Plex Mono',monospace",
+    marginBottom: 3
+  } }, "Snow Temp"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      value: comp.snowTempF != null ? useCelsius ? Math.round((comp.snowTempF - 32) * 5 / 9 * 10) / 10 : comp.snowTempF : "",
+      onChange: (e) => {
+        const v = e.target.value === "" ? null : useCelsius ? parseFloat(e.target.value) * 9 / 5 + 32 : parseFloat(e.target.value);
+        onUpdate({ ...comp, snowTempF: v });
+      },
+      placeholder: useCelsius ? "-5" : "23",
+      style: {
+        width: "100%",
+        background: "var(--paper-3)",
+        border: "1px solid var(--rule)",
+        borderRadius: 5,
+        padding: "6px 8px",
+        fontSize: 12,
+        color: "var(--ink)",
+        boxSizing: "border-box",
+        fontFamily: "'IBM Plex Mono',monospace"
+      }
+    }
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
+    fontFamily: "'IBM Plex Mono',monospace",
+    marginBottom: 3
+  } }, "Air Temp"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      value: comp.airTempF != null ? useCelsius ? Math.round((comp.airTempF - 32) * 5 / 9 * 10) / 10 : comp.airTempF : "",
+      onChange: (e) => {
+        const v = e.target.value === "" ? null : useCelsius ? parseFloat(e.target.value) * 9 / 5 + 32 : parseFloat(e.target.value);
+        onUpdate({ ...comp, airTempF: v });
+      },
+      placeholder: useCelsius ? "-3" : "27",
+      style: {
+        width: "100%",
+        background: "var(--paper-3)",
+        border: "1px solid var(--rule)",
+        borderRadius: 5,
+        padding: "6px 8px",
+        fontSize: 12,
+        color: "var(--ink)",
+        boxSizing: "border-box",
+        fontFamily: "'IBM Plex Mono',monospace"
+      }
+    }
+  )), /* @__PURE__ */ React.createElement("div", { style: { paddingTop: 18 } }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => onUpdate({ ...comp, isConfidence: !isConfidence }),
+      title: "Mark as confidence/repeat run",
+      style: {
+        padding: "6px 10px",
+        borderRadius: 5,
+        fontSize: 11,
+        cursor: "pointer",
+        border: "1px solid var(--rule)",
+        background: isConfidence ? "var(--amber)" : "var(--paper-3)",
+        color: isConfidence ? "#fff" : "var(--ink-mid)",
+        fontWeight: 600
+      }
+    },
+    isConfidence ? "\u2713 Confirm" : "Confirm?"
+  ))), /* @__PURE__ */ React.createElement("div", { style: {
     marginBottom: 10,
     padding: "10px 12px",
     background: "var(--paper-3)",
     borderRadius: 6
-  } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Leg A \u2014 ", skiLabel(comp.skiA), " leads"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 8, lineHeight: 1.5 } }, "Skier wearing ", /* @__PURE__ */ React.createElement("strong", { className: "mono" }, comp.skiA), " is the lead partner. After release, measure how many cm ", /* @__PURE__ */ React.createElement("strong", { className: "mono" }, comp.skiA), " is ahead at the measurement point. Enter a negative number if behind."), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, comp.skiA, " cm ahead"), /* @__PURE__ */ React.createElement(
+  } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Leg A \u2014 ", comp.skiA, " leads"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 8, lineHeight: 1.5 } }, "Skier on ", /* @__PURE__ */ React.createElement("strong", { className: "mono" }, comp.skiA), " leads. Measure cm gap at finish. Negative if ", comp.skiA, " is behind."), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, comp.skiA, " cm ahead"), /* @__PURE__ */ React.createElement(
     "input",
     {
       className: "inp mono",
@@ -13227,22 +13867,21 @@ function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamT
       style: { fontSize: 13 }
     }
   ))), /* @__PURE__ */ React.createElement(
-    TA,
+    "textarea",
     {
-      label: "Notes",
-      value: comp.legA?.notes || "",
+      className: "inp",
       rows: 1,
-      mic: true,
-      onChange: (v) => updLeg("legA", "notes", v),
+      value: comp.legA?.notes || "",
+      onChange: (e) => updLeg("legA", "notes", e.target.value),
       placeholder: "Track, conditions, timing\u2026",
-      style: { marginBottom: 0 }
+      style: { width: "100%", resize: "none", fontSize: 12, boxSizing: "border-box" }
     }
   )), /* @__PURE__ */ React.createElement("div", { style: {
     marginBottom: 10,
     padding: "10px 12px",
     background: "var(--paper-3)",
     borderRadius: 6
-  } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Leg B \u2014 ", skiLabel(comp.skiB), " leads (skis swapped)"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 8, lineHeight: 1.5 } }, "Skiers swap skis. Skier now wearing ", /* @__PURE__ */ React.createElement("strong", { className: "mono" }, comp.skiB), " leads. Enter how many cm ", /* @__PURE__ */ React.createElement("strong", { className: "mono" }, comp.skiB), " is ahead. Negative if behind."), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, comp.skiB, " cm ahead"), /* @__PURE__ */ React.createElement(
+  } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Leg B \u2014 ", comp.skiB, " leads (skis swapped)"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 8, lineHeight: 1.5 } }, "Skiers swap. Skier now on ", /* @__PURE__ */ React.createElement("strong", { className: "mono" }, comp.skiB), " leads. Negative if ", comp.skiB, " is behind."), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, comp.skiB, " cm ahead"), /* @__PURE__ */ React.createElement(
     "input",
     {
       className: "inp mono",
@@ -13254,15 +13893,14 @@ function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamT
       style: { fontSize: 20, fontWeight: 700, textAlign: "center", marginBottom: 8 }
     }
   )), /* @__PURE__ */ React.createElement(
-    TA,
+    "textarea",
     {
-      label: "Notes",
-      value: comp.legB?.notes || "",
+      className: "inp",
       rows: 1,
-      mic: true,
-      onChange: (v) => updLeg("legB", "notes", v),
+      value: comp.legB?.notes || "",
+      onChange: (e) => updLeg("legB", "notes", e.target.value),
       placeholder: "Track, conditions, timing\u2026",
-      style: { marginBottom: 0 }
+      style: { width: "100%", resize: "none", fontSize: 12, boxSizing: "border-box" }
     }
   )), complete && /* @__PURE__ */ React.createElement("div", { style: {
     padding: "10px 12px",
@@ -13270,11 +13908,11 @@ function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamT
     borderRadius: 6,
     border: "1px solid var(--rule)",
     marginBottom: 8
-  } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Comparison result"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 12, color: "var(--ink-faint)", marginBottom: 4 } }, "Leg A: ", comp.skiA, " ", comp.legA.cmAhead >= 0 ? "+" : "", comp.legA.cmAhead, "cm \xA0\xB7\xA0 Leg B: ", comp.skiB, " ", comp.legB.cmAhead >= 0 ? "+" : "", comp.legB.cmAhead, "cm"), /* @__PURE__ */ React.createElement("div", { style: {
+  } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Result"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 4 } }, "Leg A: ", comp.skiA, " ", comp.legA.cmAhead >= 0 ? "+" : "", comp.legA.cmAhead, "cm \xA0\xB7\xA0 Leg B: ", comp.skiB, " ", comp.legB.cmAhead >= 0 ? "+" : "", comp.legB.cmAhead, "cm"), /* @__PURE__ */ React.createElement("div", { style: {
     fontSize: 15,
     fontWeight: 700,
-    color: gap < 0.5 ? "var(--ink-faint)" : "var(--green)"
-  } }, gap < 0.5 ? "Even \u2014 no meaningful difference" : `${faster} is faster by ${gap.toFixed(1)} cm net`), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 4 } }, "Formula: (", comp.legA.cmAhead, " \u2212 ", comp.legB.cmAhead, ") \xF7 2 = ", netA.toFixed(1), " cm \u2192 ", comp.skiA, ": 0 cm, ", comp.skiB, ": ", netA > 0 ? "+" : "", (-netA).toFixed(1), " cm")), /* @__PURE__ */ React.createElement(
+    color: gap < 0.5 ? "var(--ink-faint)" : gap < 1 ? "var(--amber)" : "var(--green)"
+  } }, gap < 0.5 ? "Even \u2014 no meaningful difference" : gap < 1 ? `${faster} leads by ${gap.toFixed(1)} cm \u2014 marginal, consider re-run` : `${faster} faster by ${gap.toFixed(1)} cm`), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 4 } }, "(", comp.legA.cmAhead, " \u2212 ", comp.legB.cmAhead, ") \xF7 2 = ", netA.toFixed(1), " cm")), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: onDelete,
@@ -13304,7 +13942,7 @@ function GlideOutResults({ test, onUpdate, isBlind, useCelsius }) {
       justifyContent: "space-between",
       alignItems: "baseline",
       marginBottom: 6
-    } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 0 } }, "Speed Ranking"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)" } }, completedCount, "/", totalPairs > 0 ? totalPairs : "?", " pair", completedCount !== 1 ? "s" : "", " complete")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", marginBottom: 4, paddingLeft: 72 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9, color: "var(--ink-faint)" } }, "\u2190 faster"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9, color: "var(--ink-faint)", marginLeft: "auto" } }, "slower \u2192")), /* @__PURE__ */ React.createElement("div", { style: {
+    } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 0 } }, "Speed Ranking"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)" } }, completedCount, "/", totalPairs > 0 ? totalPairs : "?", " pair", completedCount !== 1 ? "s" : "", " complete")), /* @__PURE__ */ React.createElement("div", { style: {
       background: "var(--paper-2)",
       borderRadius: 8,
       overflow: "hidden",
@@ -13313,38 +13951,37 @@ function GlideOutResults({ test, onUpdate, isBlind, useCelsius }) {
       const barPct = maxGap > 0 ? r.cmGap / maxGap : 0;
       const barW = Math.round(barPct * BAR_W);
       const isWin = i === 0;
-      const label = isBlind ? r.skiId : r.product ? `${r.skiId} \u2014 ${r.product}` : r.skiId;
+      const ski = (test.skis || []).find((s) => s.id === r.skiId);
+      const layers = ski?.layers?.filter((l) => l.product || l.components?.some((c) => c.product)) || [];
+      const uncertain = r.cmGap < 1 && r.compCount < 2 && !isWin;
       return /* @__PURE__ */ React.createElement("div", { key: r.skiId, style: {
         padding: "8px 12px",
         borderBottom: i < results.length - 1 ? "1px solid var(--rule)" : "none",
         background: isWin ? "rgba(0,122,255,0.06)" : "transparent"
-      } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", marginBottom: 5, gap: 6 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+      } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "flex-start", marginBottom: 4, gap: 6 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
         fontSize: 11,
         color: "var(--ink-faint)",
         width: 18,
         flexShrink: 0,
-        fontWeight: 700
-      } }, "#", i + 1), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+        fontWeight: 700,
+        paddingTop: 1
+      } }, "#", i + 1), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
         fontSize: 13,
         fontWeight: 700,
-        color: isWin ? "var(--green)" : "var(--ink)",
-        flex: 1,
-        minWidth: 0,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap"
-      } }, label), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+        color: isWin ? "var(--green)" : "var(--ink)"
+      } }, r.skiId), !isBlind && r.product && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-mid)" } }, r.product), uncertain && /* @__PURE__ */ React.createElement("span", { style: {
+        fontSize: 9,
+        fontWeight: 700,
+        color: "var(--amber)",
+        fontFamily: "'IBM Plex Mono',monospace",
+        border: "1px solid var(--amber)",
+        borderRadius: 3,
+        padding: "1px 4px"
+      } }, "~uncertain")), !isBlind && layers.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 2 } }, /* @__PURE__ */ React.createElement(SkiLayerStack, { layers, isBlind: false }))), /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
         fontSize: 14,
         fontWeight: 800,
-        color: isWin ? "var(--green)" : "var(--ink-mid)",
-        flexShrink: 0
-      } }, isWin ? "0 cm" : `+${r.cmGap.toFixed(1)} cm`)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, paddingLeft: 24 } }, /* @__PURE__ */ React.createElement("div", { style: {
-        width: 8,
-        height: 8,
-        borderRadius: "50%",
-        background: isWin ? "var(--green)" : "var(--rule)",
-        flexShrink: 0
-      } }), /* @__PURE__ */ React.createElement("div", { style: {
+        color: isWin ? "var(--green)" : r.cmGap < 1 ? "var(--amber)" : "var(--ink-mid)"
+      } }, isWin ? "0 cm" : `+${r.cmGap.toFixed(1)} cm`))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, paddingLeft: 24 } }, /* @__PURE__ */ React.createElement("div", { style: {
         flex: 1,
         height: 10,
         background: "var(--paper-3)",
@@ -13366,8 +14003,8 @@ function GlideOutResults({ test, onUpdate, isBlind, useCelsius }) {
         bottom: 0,
         width: barW,
         borderRadius: "0 5px 5px 0",
-        background: isWin ? "var(--green)" : "linear-gradient(90deg, rgba(0,122,255,0.3) 0%, rgba(255,69,58,0.5) 100%)",
-        opacity: isWin ? 0.7 : 0.8
+        background: isWin ? "var(--green)" : r.cmGap < 1 ? "var(--amber)" : "linear-gradient(90deg,rgba(0,122,255,0.3),rgba(255,69,58,0.5))",
+        opacity: 0.8
       } })), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
         fontSize: 10,
         color: "var(--ink-faint)",
@@ -13375,7 +14012,7 @@ function GlideOutResults({ test, onUpdate, isBlind, useCelsius }) {
         textAlign: "right",
         flexShrink: 0
       } }, r.compCount, "\u2713")));
-    })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16, marginTop: 6, paddingLeft: 4, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)", display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 10, height: 10, borderRadius: "50%", background: "var(--green)" } }), "Winner baseline (0 cm)"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)" } }, "Bar = cm behind winner \xB7 \u2713 = comparisons completed")));
+    })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 6, paddingLeft: 4, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)" } }, "Bar = cm behind winner \xB7 \u2713 = comparisons \xB7 ~uncertain = <1cm with <2 runs")));
   }
   function MatchupMatrix() {
     if (completedComps.length === 0) return null;
@@ -13391,31 +14028,23 @@ function GlideOutResults({ test, onUpdate, isBlind, useCelsius }) {
     Object.entries(matchMap).forEach(([key, runs]) => {
       const avgNet = runs.reduce((s, r) => s + r.netA, 0) / runs.length;
       const [a, b] = key.split("|");
-      avgMap[key] = { a, b, avgNet };
+      avgMap[key] = { a, b, avgNet, runs: runs.length };
     });
-    return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Head-to-Head Results"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 8, lineHeight: 1.5 } }, "Each cell shows which ski was faster and by how many cm net. Green = row ski won \xB7 Red = row ski lost."), /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: {
+    return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Head-to-Head Results"), /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: {
       padding: "6px 10px",
       textAlign: "left",
       fontWeight: 700,
       fontSize: 11,
       color: "var(--ink-faint)",
       borderBottom: "2px solid var(--rule)"
-    } }, "vs \u2192"), ids.map((id) => /* @__PURE__ */ React.createElement(
-      "th",
-      {
-        key: id,
-        style: {
-          padding: "6px 8px",
-          textAlign: "center",
-          fontWeight: 700,
-          fontSize: 11,
-          color: "var(--ink-faint)",
-          borderBottom: "2px solid var(--rule)"
-        },
-        className: "mono"
-      },
-      id
-    )))), /* @__PURE__ */ React.createElement("tbody", null, ids.map((rowId) => /* @__PURE__ */ React.createElement("tr", { key: rowId, style: { borderBottom: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement(
+    } }, "vs \u2192"), ids.map((id) => /* @__PURE__ */ React.createElement("th", { key: id, style: {
+      padding: "6px 8px",
+      textAlign: "center",
+      fontWeight: 700,
+      fontSize: 11,
+      color: "var(--ink-faint)",
+      borderBottom: "2px solid var(--rule)"
+    }, className: "mono" }, id)))), /* @__PURE__ */ React.createElement("tbody", null, ids.map((rowId) => /* @__PURE__ */ React.createElement("tr", { key: rowId, style: { borderBottom: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement(
       "td",
       {
         style: { padding: "7px 10px", fontWeight: 700, fontSize: 12 },
@@ -13446,96 +14075,74 @@ function GlideOutResults({ test, onUpdate, isBlind, useCelsius }) {
       const won = netRow > 0.4;
       const lost = netRow < -0.4;
       const even = !won && !lost;
+      const uncertain = Math.abs(netRow) < 1 && m.runs < 2;
       return /* @__PURE__ */ React.createElement("td", { key: colId, style: {
         padding: "7px 8px",
         textAlign: "center",
-        background: won ? "rgba(0,122,255,0.12)" : lost ? "rgba(255,69,58,0.10)" : "rgba(0,122,255,0.10)"
+        background: won ? "rgba(0,122,255,0.12)" : lost ? "rgba(255,69,58,0.10)" : "rgba(255,179,0,0.08)"
       } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
         fontSize: 12,
         fontWeight: 700,
         color: won ? "var(--green)" : lost ? "var(--red)" : "var(--amber)"
-      } }, even ? "~" : (won ? "+" : "") + netRow.toFixed(1)), !even && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "var(--ink-faint)" } }, "cm"));
-    })))))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 6 } }, "+ = row ski is faster \xB7 \u2212 = row ski is slower \xB7 ~ = no meaningful difference \xB7 ? = not yet tested"));
+      } }, even ? "~" : (won ? "+" : "") + netRow.toFixed(1)), !even && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "var(--ink-faint)" } }, uncertain ? "cm ~" : "cm", m.runs > 1 ? ` \xD7${m.runs}` : ""));
+    })))))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 6 } }, "+ = row faster \xB7 \u2212 = row slower \xB7 ~ = <0.4cm no diff \xB7 ? = not tested \xB7 \xD7N = N runs"));
   }
   function ComparisonBreakdown() {
     if (completedComps.length === 0) return null;
-    return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Lbl, null, "How Each Comparison Was Measured"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 8, lineHeight: 1.5 } }, "Each comparison uses two runs. The skiers swap skis between runs to cancel out skier ability differences. The net gap = (Leg A \u2212 Leg B) \xF7 2."), completedComps.map((c, i) => {
+    return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Comparison Log"), completedComps.map((c, i) => {
       const netA = (c.legA.cmAhead - c.legB.cmAhead) / 2;
       const gap = Math.abs(netA);
       const faster = gap < 0.5 ? null : netA > 0 ? c.skiA : c.skiB;
       const skiLabel = (id) => {
         if (isBlind) return id;
         const s = (test.skis || []).find((x) => x.id === id);
-        return s?.product ? `${id} (${s.product})` : id;
+        return s?.product ? `${id} (${s.product.split(" ").slice(0, 2).join(" ")})` : id;
       };
       const legMax = Math.max(Math.abs(c.legA.cmAhead), Math.abs(c.legB.cmAhead), 1);
-      const legAW = Math.max(0, Math.round(c.legA.cmAhead / legMax * 80));
-      const legBW = Math.max(0, Math.round(c.legB.cmAhead / legMax * 80));
+      const legAW = Math.max(0, Math.round(Math.abs(c.legA.cmAhead) / legMax * 80));
+      const legBW = Math.max(0, Math.round(Math.abs(c.legB.cmAhead) / legMax * 80));
       return /* @__PURE__ */ React.createElement("div", { key: c.id, style: {
         background: "var(--paper-2)",
         borderRadius: 8,
         border: "1px solid var(--rule)",
         marginBottom: 8,
-        padding: "10px 12px"
+        padding: "10px 12px",
+        borderLeft: c.isConfidence ? "3px solid var(--amber)" : void 0
       } }, /* @__PURE__ */ React.createElement("div", { style: {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: 8
+        marginBottom: 6
       } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, fontSize: 13 } }, c.label || `Comparison ${i + 1}`), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
         fontSize: 11,
         color: "var(--ink-faint)",
         marginLeft: 8
-      } }, c.skiA, " vs ", c.skiB)), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+      } }, c.skiA, " vs ", c.skiB), c.isConfidence && /* @__PURE__ */ React.createElement("span", { style: {
+        fontSize: 9,
+        color: "var(--amber)",
+        marginLeft: 6,
+        fontFamily: "'IBM Plex Mono',monospace"
+      } }, "confirm run"), c.course && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)", marginLeft: 6 } }, "\xB7 ", c.course)), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
         fontSize: 13,
         fontWeight: 800,
-        color: faster ? "var(--green)" : "var(--amber)"
-      } }, faster ? `${faster} +${gap.toFixed(1)} cm` : "Even")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { background: "var(--paper-3)", borderRadius: 6, padding: "8px 10px" } }, /* @__PURE__ */ React.createElement("div", { style: {
+        color: faster ? gap < 1 ? "var(--amber)" : "var(--green)" : "var(--ink-faint)"
+      } }, faster ? `${faster} +${gap.toFixed(1)} cm` : "Even"), (c.snowTempF != null || c.airTempF != null) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 1 } }, c.snowTempF != null && `snow ${dispTemp(c.snowTempF, useCelsius)} `, c.airTempF != null && `air ${dispTemp(c.airTempF, useCelsius)}`))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 6 } }, [["legA", c.skiA, c.legA, legAW], ["legB", c.skiB, c.legB, legBW]].map(([leg, id, legData, w]) => /* @__PURE__ */ React.createElement("div", { key: leg, style: { background: "var(--paper-3)", borderRadius: 6, padding: "8px 10px" } }, /* @__PURE__ */ React.createElement("div", { style: {
         fontSize: 10,
         fontWeight: 700,
         color: "var(--ink-faint)",
         textTransform: "uppercase",
         letterSpacing: "0.06em",
-        marginBottom: 4
-      } }, "Leg A \u2014 ", c.skiA, " leads"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
-        fontSize: 18,
-        fontWeight: 800,
-        color: "var(--ink)",
-        marginBottom: 4
-      } }, c.legA.cmAhead >= 0 ? "+" : "", c.legA.cmAhead, " cm"), /* @__PURE__ */ React.createElement("div", { style: { height: 6, background: "var(--rule)", borderRadius: 3, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: {
+        marginBottom: 3
+      } }, leg === "legA" ? "Leg A" : "Leg B", " \u2014 ", id, " leads"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 18, fontWeight: 800, marginBottom: 3 } }, legData.cmAhead >= 0 ? "+" : "", legData.cmAhead, " cm"), /* @__PURE__ */ React.createElement("div", { style: { height: 5, background: "var(--rule)", borderRadius: 3, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: {
         height: "100%",
-        width: `${legAW}%`,
+        width: `${w}%`,
         minWidth: 2,
         background: "var(--ink)",
         borderRadius: 3
-      } })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 3 } }, skiLabel(c.skiA), " ahead at finish")), /* @__PURE__ */ React.createElement("div", { style: { background: "var(--paper-3)", borderRadius: 6, padding: "8px 10px" } }, /* @__PURE__ */ React.createElement("div", { style: {
-        fontSize: 10,
-        fontWeight: 700,
-        color: "var(--ink-faint)",
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        marginBottom: 4
-      } }, "Leg B \u2014 ", c.skiB, " leads"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
-        fontSize: 18,
-        fontWeight: 800,
-        color: "var(--ink)",
-        marginBottom: 4
-      } }, c.legB.cmAhead >= 0 ? "+" : "", c.legB.cmAhead, " cm"), /* @__PURE__ */ React.createElement("div", { style: { height: 6, background: "var(--rule)", borderRadius: 3, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: {
-        height: "100%",
-        width: `${legBW}%`,
-        minWidth: 2,
-        background: "var(--ink)",
-        borderRadius: 3
-      } })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 3 } }, skiLabel(c.skiB), " ahead at finish"))), /* @__PURE__ */ React.createElement("div", { style: {
-        background: "var(--paper)",
-        borderRadius: 6,
-        padding: "7px 10px",
-        border: "1px solid var(--rule)"
-      } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)" } }, "Net = (", c.legA.cmAhead, " \u2212 ", c.legB.cmAhead, ") \xF7 2 = ", netA.toFixed(1), " cm \xA0\u2192\xA0"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
-        fontSize: 11,
-        color: faster ? "var(--green)" : "var(--amber)",
+      } })), legData.notes && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 4 } }, legData.notes)))), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)" } }, "(", c.legA.cmAhead, " \u2212 ", c.legB.cmAhead, ") \xF7 2 = ", netA.toFixed(1), " cm \xA0\u2192\xA0", /* @__PURE__ */ React.createElement("span", { style: {
+        color: faster ? gap < 1 ? "var(--amber)" : "var(--green)" : "var(--ink-faint)",
         fontWeight: 700
-      } }, faster ? `${faster} faster by ${gap.toFixed(1)} cm` : "No meaningful difference")), c.testers && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 5 } }, "Testers: ", c.testers));
+      } }, faster ? `${faster} +${gap.toFixed(1)} cm` : "No meaningful difference")), c.testers && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 4 } }, "Testers: ", c.testers));
     }));
   }
   return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(BarChart, null), /* @__PURE__ */ React.createElement(MatchupMatrix, null), /* @__PURE__ */ React.createElement(ComparisonBreakdown, null), completedCount >= 1 && !hasWinner && /* @__PURE__ */ React.createElement(
@@ -13563,10 +14170,12 @@ function GlideOutResults({ test, onUpdate, isBlind, useCelsius }) {
     },
     "Declare ",
     results[0].skiId,
-    " Winner"
+    " Winner",
+    results[0].cmGap !== void 0 && /* @__PURE__ */ React.createElement("span", { style: { opacity: 0.6, marginLeft: 8, fontSize: 11 } }, results.length > 1 ? `(+${results[1].cmGap.toFixed(1)} cm over 2nd)` : "")
   ), hasWinner && (() => {
     const winner = (test.skis || []).find((s) => s.standing === "Winner");
     if (!winner) return null;
+    const winLayers = winner.layers?.filter((l) => l.product || l.components?.some((c) => c.product)) || [];
     return /* @__PURE__ */ React.createElement("div", { style: {
       padding: "14px 16px",
       background: "var(--paper-2)",
@@ -13580,7 +14189,7 @@ function GlideOutResults({ test, onUpdate, isBlind, useCelsius }) {
       textTransform: "uppercase",
       letterSpacing: "0.08em",
       marginBottom: 4
-    } }, "Winner"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800, marginBottom: 2 } }, !isBlind ? winner.product || winner.id : winner.id), !isBlind && winner.product && winner.id && /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginBottom: 4 } }, winner.id), !isBlind && winner.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginBottom: 4 } }, winner.application), !isBlind && winner.feelNotes && /* @__PURE__ */ React.createElement("div", { style: {
+    } }, "Winner"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800, marginBottom: 2 } }, !isBlind ? winner.product || winner.id : winner.id), !isBlind && winLayers.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 6 } }, /* @__PURE__ */ React.createElement(SkiLayerStack, { layers: winLayers, isBlind: false })), !isBlind && winner.feelNotes && /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 12,
       color: "var(--ink-mid)",
       fontStyle: "italic",
@@ -13610,14 +14219,18 @@ function GlideOutResults({ test, onUpdate, isBlind, useCelsius }) {
     )));
   })());
 }
-function GlideOutTab({ test, onUpdate, isBlind }) {
+function GlideOutTab({ test, onUpdate, isBlind, useCelsius = false }) {
   const comparisons = test.glideOutRuns || [];
   const activeSkis = (test.skis || []).filter((s) => s.standing !== "Eliminated");
   const hasWinner = test.skis?.some((s) => s.standing === "Winner");
   const [skiA, setSkiA] = useState("");
   const [skiB, setSkiB] = useState("");
+  const [isConfidence, setIsConfidence] = useState(false);
+  const [course, setCourse] = useState("");
   const teamTesters = Array.isArray(test.testers) ? test.testers : [];
   const [testers, setTesters] = useState([]);
+  const [snowIn, setSnowIn] = useState("");
+  const [airIn, setAirIn] = useState("");
   const suggested = suggestNextComparison(comparisons, activeSkis);
   useEffect(() => {
     const sug = suggestNextComparison(comparisons, activeSkis);
@@ -13639,6 +14252,8 @@ function GlideOutTab({ test, onUpdate, isBlind }) {
   function addComparison() {
     if (!skiA || !skiB || skiA === skiB) return;
     const num = comparisons.length + 1;
+    const snowF = snowIn !== "" ? useCelsius ? parseFloat(snowIn) * 9 / 5 + 32 : parseFloat(snowIn) : null;
+    const airF = airIn !== "" ? useCelsius ? parseFloat(airIn) * 9 / 5 + 32 : parseFloat(airIn) : null;
     const comp = {
       id: uid(),
       num,
@@ -13646,12 +14261,17 @@ function GlideOutTab({ test, onUpdate, isBlind }) {
       skiA,
       skiB,
       testers: testers.join(", "),
+      course: course.trim() || null,
+      isConfidence,
+      snowTempF: isNaN(snowF) ? null : snowF,
+      airTempF: isNaN(airF) ? null : airF,
       legA: { cmAhead: null, notes: "" },
       legB: { cmAhead: null, notes: "" },
       ts: nowStr()
     };
     upd({ glideOutRuns: [...comparisons, comp] });
     setTesters([]);
+    setIsConfidence(false);
   }
   function updateComp(id, patch) {
     upd({ glideOutRuns: comparisons.map((c) => c.id === id ? patch : c) });
@@ -13667,12 +14287,12 @@ function GlideOutTab({ test, onUpdate, isBlind }) {
     padding: "10px 14px",
     background: "var(--paper-2)",
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 12,
     border: "1px solid var(--rule)",
     fontSize: 12,
     color: "var(--ink-mid)",
     lineHeight: 1.6
-  } }, /* @__PURE__ */ React.createElement("strong", null, "Protocol:"), " 1\u20133 double poles from start, then tuck. Lead partner holds second partner to match speed, releases at the release point. Both hold tuck. Measure cm gap at measurement point. Swap skis and repeat the same run. Net = (leg A cm \u2212 leg B cm) \xF7 2. Reported as winner 0 cm, others +Ncm."), !hasWinner && completedCount > 0 && completedCount >= totalPairs && totalPairs > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+  } }, /* @__PURE__ */ React.createElement("strong", null, "Protocol:"), " 1\u20133 double poles from start, tuck. Lead partner holds second to match speed, releases at release point. Both hold tuck to measurement point. Measure cm gap, swap skis, repeat. Net = (Leg A \u2212 Leg B) \xF7 2."), !hasWinner && completedCount > 0 && completedCount >= totalPairs && totalPairs > 0 && /* @__PURE__ */ React.createElement("div", { style: {
     padding: "10px 14px",
     background: "rgba(0,122,255,0.08)",
     borderRadius: 8,
@@ -13681,7 +14301,45 @@ function GlideOutTab({ test, onUpdate, isBlind }) {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center"
-  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--ink-mid)" } }, "\u2713 All ", totalPairs, " pair", totalPairs !== 1 ? "s" : "", " tested"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, "Rankings are final \u2014 declare a winner or run additional comparisons below."))), !hasWinner && /* @__PURE__ */ React.createElement("div", { style: {
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--ink-mid)" } }, "\u2713 All ", totalPairs, " pair", totalPairs !== 1 ? "s" : "", " tested"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, "Declare a winner or run confirmation comparisons below."))), results.length > 0 && !hasWinner && /* @__PURE__ */ React.createElement("div", { style: {
+    background: "var(--paper-2)",
+    borderRadius: 8,
+    padding: "10px 12px",
+    marginBottom: 12,
+    border: "1px solid var(--rule)"
+  } }, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    fontFamily: "'IBM Plex Mono',monospace",
+    marginBottom: 8
+  } }, "Live Rankings"), results.map((r, i) => {
+    const uncertain = r.cmGap < 1 && r.compCount < 2 && i > 0;
+    return /* @__PURE__ */ React.createElement("div", { key: r.skiId, style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "4px 0",
+      borderBottom: i < results.length - 1 ? "1px solid var(--rule)" : "none"
+    } }, /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 10,
+      color: "var(--ink-faint)",
+      width: 18,
+      fontFamily: "'IBM Plex Mono',monospace",
+      fontWeight: 700
+    } }, "#", i + 1), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: i === 0 ? "var(--green)" : "var(--ink)",
+      flex: 1
+    } }, r.skiId, !isBlind && r.product ? ` \u2014 ${r.product.split(" ").slice(0, 3).join(" ")}` : ""), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: i === 0 ? "var(--green)" : uncertain ? "var(--amber)" : "var(--ink-mid)"
+    } }, i === 0 ? "lead" : `+${r.cmGap.toFixed(1)}cm`, uncertain ? " ~" : ""));
+  })), !hasWinner && /* @__PURE__ */ React.createElement("div", { style: {
     background: "var(--paper-2)",
     borderRadius: 8,
     padding: 14,
@@ -13692,7 +14350,62 @@ function GlideOutTab({ test, onUpdate, isBlind }) {
     justifyContent: "space-between",
     alignItems: "baseline",
     marginBottom: 8
-  } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 0 } }, suggested?.timesRun === 0 ? "\u25B6 Next Pair" : "New Comparison"), suggested && suggested.timesRun > 0 && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, "All pairs tested \xB7 additional run")), activeSkis.length < 2 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-faint)" } }, "Add at least 2 skis in the Fleet tab to begin.") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Ski A (leads first)"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: skiA, onChange: (e) => setSkiA(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), activeSkis.filter((s) => s.id !== skiB).map((s) => /* @__PURE__ */ React.createElement("option", { key: s.id, value: s.id }, s.id, !isBlind && s.product ? ` \u2014 ${s.product}` : "")))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Ski B (leads after swap)"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: skiB, onChange: (e) => setSkiB(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), activeSkis.filter((s) => s.id !== skiA).map((s) => /* @__PURE__ */ React.createElement("option", { key: s.id, value: s.id }, s.id, !isBlind && s.product ? ` \u2014 ${s.product}` : ""))))), teamTesters.length > 0 ? /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Testers"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, teamTesters.map((t) => {
+  } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 0 } }, suggested?.timesRun === 0 ? "\u25B6 Next Pair" : "New Comparison"), suggested && suggested.timesRun > 0 && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, "All pairs tested \xB7 additional run")), activeSkis.length < 2 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-faint)" } }, "Add at least 2 skis in the Fleet tab to begin.") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Ski A (leads first)"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: skiA, onChange: (e) => setSkiA(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), activeSkis.filter((s) => s.id !== skiB).map((s) => /* @__PURE__ */ React.createElement("option", { key: s.id, value: s.id }, s.id, !isBlind && s.product ? ` \u2014 ${s.product.split(" ").slice(0, 2).join(" ")}` : "")))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Ski B (leads after swap)"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: skiB, onChange: (e) => setSkiB(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), activeSkis.filter((s) => s.id !== skiA).map((s) => /* @__PURE__ */ React.createElement("option", { key: s.id, value: s.id }, s.id, !isBlind && s.product ? ` \u2014 ${s.product.split(" ").slice(0, 2).join(" ")}` : ""))))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Course / Section"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: course,
+      onChange: (e) => setCourse(e.target.value),
+      placeholder: "e.g. B-sector",
+      style: {
+        width: "100%",
+        background: "var(--paper-3)",
+        border: "1px solid var(--rule)",
+        borderRadius: 5,
+        padding: "7px 8px",
+        fontSize: 12,
+        color: "var(--ink)",
+        boxSizing: "border-box"
+      }
+    }
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Snow ", useCelsius ? "\xB0C" : "\xB0F"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      value: snowIn,
+      onChange: (e) => setSnowIn(e.target.value),
+      placeholder: useCelsius ? "-5" : "23",
+      style: {
+        width: "100%",
+        background: "var(--paper-3)",
+        border: "1px solid var(--rule)",
+        borderRadius: 5,
+        padding: "7px 8px",
+        fontSize: 12,
+        color: "var(--ink)",
+        fontFamily: "'IBM Plex Mono',monospace",
+        boxSizing: "border-box"
+      }
+    }
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Air ", useCelsius ? "\xB0C" : "\xB0F"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      value: airIn,
+      onChange: (e) => setAirIn(e.target.value),
+      placeholder: useCelsius ? "-3" : "27",
+      style: {
+        width: "100%",
+        background: "var(--paper-3)",
+        border: "1px solid var(--rule)",
+        borderRadius: 5,
+        padding: "7px 8px",
+        fontSize: 12,
+        color: "var(--ink)",
+        fontFamily: "'IBM Plex Mono',monospace",
+        boxSizing: "border-box"
+      }
+    }
+  ))), teamTesters.length > 0 ? /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Testers"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, teamTesters.map((t) => {
     const selected = testers.includes(t);
     return /* @__PURE__ */ React.createElement(
       "button",
@@ -13720,10 +14433,27 @@ function GlideOutTab({ test, onUpdate, isBlind }) {
       value: testers.join(", "),
       onChange: (v) => setTesters(v ? v.split(", ").filter(Boolean) : []),
       mic: true,
-      placeholder: "Names or initials of the two skiers",
+      placeholder: "Names or initials",
       style: { marginBottom: 8 }
     }
-  ), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setIsConfidence((c) => !c),
+      style: {
+        padding: "6px 14px",
+        borderRadius: 6,
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer",
+        border: "1px solid",
+        borderColor: isConfidence ? "var(--amber)" : "var(--rule)",
+        background: isConfidence ? "rgba(255,179,0,0.15)" : "var(--paper-3)",
+        color: isConfidence ? "var(--amber)" : "var(--ink-mid)"
+      }
+    },
+    isConfidence ? "\u2713 Confirmation run" : "Mark as confirmation run"
+  ), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, isConfidence ? "Flagged as repeat to verify earlier result" : "")), /* @__PURE__ */ React.createElement(
     "button",
     {
       className: "btn",
@@ -13740,6 +14470,7 @@ function GlideOutTab({ test, onUpdate, isBlind }) {
       skis: test.skis,
       isBlind,
       teamTesters,
+      useCelsius,
       onUpdate: (patch) => updateComp(comp.id, patch),
       onDelete: () => deleteComp(comp.id)
     }
@@ -14343,9 +15074,15 @@ function WaxRecommendPanel({ allEvents, session, event, useCelsius, catalog, str
           if (testSnow == null) return;
           if (Math.abs(testSnow - ref) > 15) return;
           (test.skis || []).filter((s) => s.standing === "Winner" || s.standing === "Runner-Up").forEach((ski) => {
-            if (!ski.product) return;
+            if (!ski.product && !ski.layers?.length) return;
+            const layerDesc = (ski.layers || []).filter((l) => l.product || l.components?.some((c) => c.product)).map((l) => {
+              const comps = l.components?.filter((c) => c.product);
+              const prod = comps?.length ? componentsSummary(comps) : l.product;
+              return `${LAYER_ROLE_LABELS[l.role] || l.role}: ${prod}`;
+            }).join("; ");
             wins.push({
-              product: ski.product,
+              product: ski.product || layersSummary(ski.layers || []),
+              layerDesc: layerDesc || null,
               category: test.category,
               standing: ski.standing,
               tempF: testSnow,
@@ -14435,7 +15172,10 @@ function WaxRecommendPanel({ allEvents, session, event, useCelsius, catalog, str
       setLoading(false);
       return;
     }
-    const pastWinStr = pastWins.length ? "\n\nPAST WINNERS IN SIMILAR CONDITIONS:\n" + pastWins.map((w) => `- ${w.product} (${w.category}, ${w.standing}, ~${w.tempF}\xB0F, ${w.event}${w.source === "cross-team" ? " [cross-team]" : " [your team]"})`).join("\n") : "";
+    const pastWinStr = pastWins.length ? "\n\nPAST WINNERS IN SIMILAR CONDITIONS:\n" + pastWins.map((w) => {
+      const prod = w.layerDesc ? w.layerDesc : w.product;
+      return `- ${prod} (${w.category}, ${w.standing}, ~${w.tempF}\xB0F, ${w.event}${w.source === "cross-team" ? " [cross-team]" : " [your team]"})`;
+    }).join("\n") : "";
     const prompt = `You are an expert Nordic ski wax technician. Recommend wax for the following race/training conditions from the catalog provided. Return ONLY valid JSON, no markdown, no preamble.
 
 CURRENT CONDITIONS:
@@ -15910,7 +16650,7 @@ function TournamentSkiCard({ ski, isGlide, isBlind, onAdvance, onEliminate, onRu
       onSave: (photos) => onPhotoSave(ski.id, photos),
       onClose: () => setShowPhotos(false)
     }
-  ), /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 16, fontWeight: 700 } }, ski.id), !isBlind && ski.product && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, color: "var(--ink-mid)" } }, ski.product), !isBlind && ski.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: ski.waxForm }), isBlind && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { marginLeft: 4, color: "var(--ink-faint)", fontSize: 9 } }, "blind")), roundLabel && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 3, display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: {
+  ), /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 16, fontWeight: 700 } }, ski.id), isBlind && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { marginLeft: 4, color: "var(--ink-faint)", fontSize: 9 } }, "blind")), ski.layers?.length > 0 ? /* @__PURE__ */ React.createElement(SkiLayerStack, { layers: ski.layers, isBlind }) : !isBlind && ski.product && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginTop: 2 } }, ski.product, ski.waxForm && /* @__PURE__ */ React.createElement(React.Fragment, null, " ", /* @__PURE__ */ React.createElement(WaxFormBadge, { form: ski.waxForm }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }), roundLabel && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 3, display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: {
     fontSize: 10,
     fontWeight: 700,
     letterSpacing: "0.07em",
@@ -16023,7 +16763,7 @@ function SkiCard({ ski, isGlide, isBlind, onRatingChange, onPhotoSave, teamCode,
     justifyContent: "space-between",
     alignItems: "center",
     cursor: "pointer"
-  } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 14, fontWeight: 700 } }, ski.id), !isBlind && ski.product && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: "var(--ink-mid)" } }, ski.product), !isBlind && ski.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: ski.waxForm })), !isBlind && ski.feelNotes && !open && /* @__PURE__ */ React.createElement("div", { style: {
+  } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 14, fontWeight: 700 } }, ski.id), !isBlind && ski.product && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-mid)" } }, ski.product)), !isBlind && ski.feelNotes && !open && /* @__PURE__ */ React.createElement("div", { style: {
     fontSize: 11,
     color: "var(--ink-faint)",
     marginTop: 2,
@@ -16052,7 +16792,7 @@ function SkiCard({ ski, isGlide, isBlind, onRatingChange, onPhotoSave, teamCode,
       style: { padding: "5px 9px", fontSize: 12, fontWeight: 600, minHeight: 32 }
     },
     "Photo"
-  ), /* @__PURE__ */ React.createElement(ChevronIcon, { size: 14, color: "var(--ink-faint)", up: open }))), open && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 12px", borderTop: "1px solid var(--rule)" } }, !isBlind && ski.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginBottom: 8 } }, ski.application), !isGlide && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Lbl, null, "Kick Rating 1\u201310"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 10 } }, /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement(ChevronIcon, { size: 14, color: "var(--ink-faint)", up: open }))), open && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 12px", borderTop: "1px solid var(--rule)" } }, !isBlind && ski.layers?.length > 0 ? /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ React.createElement(SkiLayerStack, { layers: ski.layers, isBlind })) : !isBlind && ski.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginBottom: 8 } }, ski.application), !isGlide && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Lbl, null, "Kick Rating 1\u201310"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 10 } }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "range",
@@ -16740,9 +17480,7 @@ function TournamentSkiRow({
   winner,
   roundState,
   rewaxId,
-  rewaxProduct,
-  rewaxApp,
-  rewaxForm,
+  rewaxLayers,
   vocab,
   test,
   setCurrentPair,
@@ -16750,9 +17488,7 @@ function TournamentSkiRow({
   restore,
   startRewax,
   confirmRewax,
-  setRewaxProduct,
-  setRewaxApp,
-  setRewaxForm,
+  setRewaxLayers,
   setRewaxId,
   lookupProductForm: lookupProductForm2,
   onVocabAdd,
@@ -17051,32 +17787,15 @@ function TournamentSkiRow({
       }
     ));
   })(), rewaxId === ski.id && /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--rule)", padding: "12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--blue)", marginBottom: 10 } }, "Re-wax ", ski.id), /* @__PURE__ */ React.createElement(
-    ACI,
+    SkiLayerEditor,
     {
-      label: test.type === "Hand structure" ? "New Structure Tool" : test.category === "kick" ? "New Kick Wax" : "New Glide Wax",
-      value: rewaxProduct,
-      onChange: (v) => {
-        setRewaxProduct(v);
-        const f = lookupProductForm2(v);
-        if (f) setRewaxForm(f);
-      },
-      onCommit: (v) => onVocabAdd?.(test.type === "Hand structure" ? "structures" : "products", [v]),
-      suggestions: test.type === "Hand structure" ? vocab?.structures || [] : test.category === "kick" ? vocab?.kickProducts || vocab?.products || [] : vocab?.glideProducts || vocab?.products || [],
-      placeholder: test.type === "Hand structure" ? "e.g. Speedy Z1N-36\u2026" : test.category === "kick" ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026",
-      style: { marginBottom: 6 }
+      layers: rewaxLayers,
+      category: test.category,
+      testType: test.type || "",
+      vocab,
+      onChange: setRewaxLayers
     }
-  ), test.type !== "Hand structure" && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category: test.category, value: rewaxForm, onChange: setRewaxForm })), /* @__PURE__ */ React.createElement(
-    ACI,
-    {
-      label: "Application",
-      value: rewaxApp,
-      onChange: setRewaxApp,
-      onCommit: (v) => onVocabAdd?.("applications", [v]),
-      suggestions: vocab?.applications || [],
-      placeholder: "Iron temp, layers\u2026",
-      style: { marginBottom: 10 }
-    }
-  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: () => {
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: () => {
     confirmRewax();
     setOpen(false);
   } }, "Re-enter ", ski.id), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: () => setRewaxId(null) }, "Cancel"))));
@@ -17153,15 +17872,11 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
   const [catalogToast, setCatalogToast] = useState(false);
   const [newId, setNewId] = useState("");
   const [newRater, setNewRater] = useState("");
-  const [newProduct, setNewProduct] = useState("");
-  const [newApp, setNewApp] = useState("");
-  const [newForm, setNewForm] = useState("");
+  const [newLayers, setNewLayers] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [rewaxId, setRewaxId] = useState(null);
-  const [rewaxProduct, setRewaxProduct] = useState("");
-  const [rewaxApp, setRewaxApp] = useState("");
-  const [rewaxForm, setRewaxForm] = useState("");
+  const [rewaxLayers, setRewaxLayers] = useState([]);
   const isGlide = test.category === "glide" || test.category === "glide-out";
   const skiSort = (a, b) => a.id.localeCompare(b.id, void 0, { numeric: true, sensitivity: "base" });
   const activeSki = (test.skis || []).filter((s) => s.standing === "Active").sort(skiSort);
@@ -17290,9 +18005,8 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
   }
   function startRewax(ski) {
     setRewaxId(ski.id);
-    setRewaxProduct(ski.product || "");
-    setRewaxApp(ski.application || "");
-    setRewaxForm(ski.waxForm || lookupProductForm(ski.product) || "");
+    const existing = ski.layers?.length ? ski.layers : migrateSkiToLayers(ski, test.category, test.type || "");
+    setRewaxLayers(existing);
   }
   function confirmRewax() {
     const rs = computeRoundState(test.rounds || [], test.skis || []);
@@ -17306,25 +18020,29 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       winner: rewaxId,
       loser: null
     };
+    const layers = rewaxLayers.filter((l) => l.product?.trim());
+    const summary = layersSummary(layers);
+    const topL = keyLayer(layers, test.category);
     upd({
       skis: (test.skis || []).map((s) => s.id === rewaxId ? {
         ...s,
-        product: rewaxProduct,
-        application: rewaxApp,
-        waxForm: rewaxForm || void 0,
+        layers,
+        product: summary,
+        application: topL?.application || "",
+        waxForm: topL?.waxForm || void 0,
         standing: "Active",
         ratings: {},
         feelNotes: ""
       } : s),
       rounds: [...test.rounds || [], restoreRecord]
     });
-    if (rewaxProduct) onVocabAdd?.("products", [rewaxProduct]);
-    if (rewaxApp) onVocabAdd?.("applications", [rewaxApp]);
-    if (rewaxProduct && rewaxForm) rememberProductForm(rewaxProduct, rewaxForm);
+    layers.forEach((l) => {
+      if (l.product) onVocabAdd?.("products", [l.product]);
+      if (l.application) onVocabAdd?.("applications", [l.application]);
+      if (l.product && l.waxForm) rememberProductForm(l.product, l.waxForm);
+    });
     setRewaxId(null);
-    setRewaxProduct("");
-    setRewaxApp("");
-    setRewaxForm("");
+    setRewaxLayers([]);
   }
   function declareWinner(skiId) {
     setPendingWinner(skiId);
@@ -17436,30 +18154,50 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
   }
   function addSki() {
     const id = newId.trim() || nextSkiId(test.skis);
+    const layers = newLayers.filter((l) => l.product?.trim());
+    const summary = layersSummary(layers);
+    const topL = keyLayer(layers, test.category);
     const ski = {
       id,
-      product: newProduct.trim(),
-      application: newApp.trim(),
-      waxForm: newForm || void 0,
+      layers,
+      product: summary,
+      application: topL?.application || "",
+      waxForm: topL?.waxForm || void 0,
       standing: "Active",
       ratings: {}
     };
     upd({ skis: [...test.skis || [], ski] });
-    if (newProduct) onVocabAdd?.("products", [newProduct.trim()]);
-    if (newApp) onVocabAdd?.("applications", [newApp.trim()]);
-    if (newProduct && newForm) rememberProductForm(newProduct.trim(), newForm);
+    layers.forEach((l) => {
+      if (l.product) onVocabAdd?.("products", [l.product]);
+      if (l.application) onVocabAdd?.("applications", [l.application]);
+      if (l.product && l.waxForm) rememberProductForm(l.product, l.waxForm);
+    });
     setNewId("");
-    setNewProduct("");
-    setNewApp("");
-    setNewForm("");
+    setNewLayers([]);
   }
   function removeSki(id) {
     upd({ skis: (test.skis || []).filter((s) => s.id !== id) });
   }
   function saveEdit(id, patch) {
-    updSki(id, patch);
-    if (patch.product) onVocabAdd?.("products", [patch.product]);
-    if (patch.application) onVocabAdd?.("applications", [patch.application]);
+    const layers = (patch.layers || []).filter((l) => l.product?.trim());
+    const summary = layersSummary(layers);
+    const topL = keyLayer(layers, test.category);
+    const merged = layers.length ? {
+      ...patch,
+      layers,
+      product: summary,
+      application: topL?.application || "",
+      waxForm: topL?.waxForm || void 0
+    } : patch;
+    updSki(id, merged);
+    layers.forEach((l) => {
+      if (l.product) onVocabAdd?.("products", [l.product]);
+      if (l.application) onVocabAdd?.("applications", [l.application]);
+    });
+    if (!layers.length) {
+      if (patch.product) onVocabAdd?.("products", [patch.product]);
+      if (patch.application) onVocabAdd?.("applications", [patch.application]);
+    }
     setEditingId(null);
   }
   const roundState = tab === "tournament" && !winner ? computeRoundState(test.rounds || [], test.skis || []) : null;
@@ -18168,9 +18906,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       winner,
       roundState: rs,
       rewaxId,
-      rewaxProduct,
-      rewaxApp,
-      rewaxForm,
+      rewaxLayers,
       vocab,
       test,
       setCurrentPair: selectPair,
@@ -18178,9 +18914,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       restore,
       startRewax,
       confirmRewax,
-      setRewaxProduct,
-      setRewaxApp,
-      setRewaxForm,
+      setRewaxLayers,
       setRewaxId,
       lookupProductForm,
       onVocabAdd,
@@ -18601,7 +19335,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       },
       "Declare Tie"
     )), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 10, textAlign: "center" } }, "Or keep testing \u2014 select two skis above to continue"));
-  })()), tab === "glideout" && /* @__PURE__ */ React.createElement(GlideOutTab, { test, onUpdate, isBlind }), tab === "fleet" && /* @__PURE__ */ React.createElement("div", null, fleets.filter((f) => f.category === test.category || test.category === "glide-out" && f.category === "glide").length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Load from Fleet Registry"), fleets.filter((f) => f.category === test.category || test.category === "glide-out" && f.category === "glide").map((fleet) => {
+  })()), tab === "glideout" && /* @__PURE__ */ React.createElement(GlideOutTab, { test, onUpdate, isBlind, useCelsius }), tab === "fleet" && /* @__PURE__ */ React.createElement("div", null, fleets.filter((f) => f.category === test.category || test.category === "glide-out" && f.category === "glide").length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Load from Fleet Registry"), fleets.filter((f) => f.category === test.category || test.category === "glide-out" && f.category === "glide").map((fleet) => {
     const alreadyLoaded = fleet.skis.every(
       (fs) => (test.skis || []).some((s) => s.id === fs.id)
     );
@@ -18670,29 +19404,13 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
     marginBottom: 6,
     border: "2px solid var(--blue)"
   } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--blue)", marginBottom: 8 } }, "Rewax ", ski.id), /* @__PURE__ */ React.createElement(
-    ACI,
+    SkiLayerEditor,
     {
-      label: test.type === "Hand structure" ? "Structure Tool" : test.category === "kick" ? "New Kick Wax" : "New Glide Wax",
-      value: rewaxProduct,
-      onChange: (v) => {
-        setRewaxProduct(v);
-        const f = lookupProductForm(v);
-        if (f) setRewaxForm(f);
-      },
-      onCommit: (v) => onVocabAdd?.(test.type === "Hand structure" ? "structures" : "products", [v]),
-      suggestions: test.type === "Hand structure" ? vocab?.structures || [] : test.category === "kick" ? vocab?.kickProducts || vocab?.products || [] : vocab?.glideProducts || vocab?.products || [],
-      placeholder: test.type === "Hand structure" ? "e.g. Speedy Z1N-36\u2026" : test.category === "kick" ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026",
-      style: { marginBottom: 6 }
-    }
-  ), test.type !== "Hand structure" && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category: test.category, value: rewaxForm, onChange: setRewaxForm })), /* @__PURE__ */ React.createElement(
-    ACI,
-    {
-      label: "Application",
-      value: rewaxApp,
-      onChange: setRewaxApp,
-      suggestions: vocab?.applications || [],
-      placeholder: "Application method\u2026",
-      style: { marginBottom: 10 }
+      layers: rewaxLayers,
+      category: test.category,
+      testType: test.type || "",
+      vocab,
+      onChange: setRewaxLayers
     }
   ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(
     "button",
@@ -18700,21 +19418,11 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       className: "btn",
       style: { flex: 2, fontSize: 13 },
       onClick: () => {
-        updSki(rewaxId, {
-          product: rewaxProduct,
-          application: rewaxApp,
-          waxForm: rewaxForm || void 0,
-          standing: "Active",
-          ratings: {},
-          feelNotes: ""
+        rewaxLayers.filter((l) => l.product).forEach((l) => {
+          onVocabAdd?.("products", [l.product]);
+          if (l.application) onVocabAdd?.("applications", [l.application]);
         });
-        if (rewaxProduct) onVocabAdd?.("products", [rewaxProduct]);
-        if (rewaxApp) onVocabAdd?.("applications", [rewaxApp]);
-        if (rewaxProduct && rewaxForm) rememberProductForm(rewaxProduct, rewaxForm);
-        setRewaxId(null);
-        setRewaxProduct("");
-        setRewaxApp("");
-        setRewaxForm("");
+        confirmRewax();
       }
     },
     "Confirm Rewax & Restore"
@@ -18725,9 +19433,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       style: { flex: 1, fontSize: 13 },
       onClick: () => {
         setRewaxId(null);
-        setRewaxProduct("");
-        setRewaxApp("");
-        setRewaxForm("");
+        setRewaxLayers([]);
       }
     },
     "Cancel"
@@ -18774,9 +19480,8 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
     {
       onClick: () => {
         setRewaxId(ski.id);
-        setRewaxProduct(ski.product || "");
-        setRewaxApp(ski.application || "");
-        setRewaxForm(ski.waxForm || lookupProductForm(ski.product) || "");
+        const el = ski.layers?.length ? ski.layers : migrateSkiToLayers(ski, test.category, test.type || "");
+        setRewaxLayers(el);
       },
       className: "btn-ghost",
       style: {
@@ -18829,41 +19534,18 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       placeholder: `or type custom (e.g. ${nextSkiId(test.skis)})`,
       style: { fontSize: 15, letterSpacing: "0.06em" }
     }
-  )), (() => {
-    const isStruct = test.type === "Hand structure";
-    const isKick = test.category === "kick";
-    const productLabel = isStruct ? "Structure Tool" : isKick ? "Kick Wax" : "Glide Wax";
-    const productPlaceholder = isStruct ? "e.g. Speedy Z1N-36\u2026" : isKick ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026";
-    const productSuggestions = isStruct ? vocab?.structures || [] : isKick ? vocab?.kickProducts || vocab?.products || [] : vocab?.glideProducts || vocab?.products || [];
-    const appPlaceholder = isStruct ? "e.g. 3 passes tip-to-tail" : "Iron temp, layers\u2026";
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
-      ACI,
-      {
-        label: productLabel,
-        value: newProduct,
-        onChange: (v) => {
-          setNewProduct(v);
-          const f = lookupProductForm(v);
-          if (f) setNewForm(f);
-        },
-        onCommit: (v) => onVocabAdd?.(isStruct ? "structures" : "products", [v]),
-        suggestions: productSuggestions,
-        placeholder: productPlaceholder,
-        style: { marginBottom: 6 }
-      }
-    ), !isStruct && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category: test.category, value: newForm, onChange: setNewForm })), /* @__PURE__ */ React.createElement(
-      ACI,
-      {
-        label: "Application",
-        value: newApp,
-        onChange: setNewApp,
-        onCommit: (v) => onVocabAdd?.("applications", [v]),
-        suggestions: vocab?.applications || [],
-        placeholder: appPlaceholder,
-        style: { marginBottom: 8 }
-      }
-    ));
-  })(), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: addSki, style: { flex: 1 } }, "Add to Fleet"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", onClick: addSki, style: { flex: 1 } }, "Add Another")))), tab === "setup" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Category"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.category || "glide", onChange: (e) => upd({ category: e.target.value, type: "" }) }, /* @__PURE__ */ React.createElement("option", { value: "glide" }, "Glide"), /* @__PURE__ */ React.createElement("option", { value: "kick" }, "Kick"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Test Type"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.type || "", onChange: (e) => upd({ type: e.target.value }) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), (test.category === "glide" || test.category === "glide-out" ? ["Topcoat", "Paraffin", "Hand structure", "Grind"] : test.category === "kick" ? ["Binder", "Mid layer", "Top layer", "Full stack"] : []).map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o))))), /* @__PURE__ */ React.createElement(TI, { label: "Test Name", value: test.name, onChange: (v) => upd({ name: v }), style: { marginBottom: 8 }, mic: true }), (() => {
+  )), /* @__PURE__ */ React.createElement(
+    SkiLayerEditor,
+    {
+      layers: newLayers,
+      category: test.category,
+      testType: test.type || "",
+      vocab,
+      onChange: setNewLayers
+    }
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: addSki, style: { flex: 1 } }, "Add to Fleet"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", onClick: () => {
+    addSki();
+  }, style: { flex: 1 } }, "Add Another")))), tab === "setup" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Category"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.category || "glide", onChange: (e) => upd({ category: e.target.value, type: "" }) }, /* @__PURE__ */ React.createElement("option", { value: "glide" }, "Glide"), /* @__PURE__ */ React.createElement("option", { value: "kick" }, "Kick"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Test Type"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.type || "", onChange: (e) => upd({ type: e.target.value }) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), (test.category === "glide" || test.category === "glide-out" ? ["Topcoat", "Paraffin", "Hand structure", "Grind"] : test.category === "kick" ? ["Binder", "Mid layer", "Top layer", "Full stack"] : []).map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o))))), /* @__PURE__ */ React.createElement(TI, { label: "Test Name", value: test.name, onChange: (v) => upd({ name: v }), style: { marginBottom: 8 }, mic: true }), (() => {
     const testers = Array.isArray(test.testers) ? test.testers : [];
     return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Testers"), testers.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 } }, testers.map((r) => /* @__PURE__ */ React.createElement("div", { key: r, style: {
       display: "flex",
@@ -19047,17 +19729,11 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
   )));
 }
 function SkiEditInline({ ski, vocab, onSave, onCancel, onPhotoSave, teamCode, eventId, category = "glide", testType = "" }) {
-  const [product, setProduct] = useState(ski.product || "");
-  const [application, setApplication] = useState(ski.application || "");
-  const [waxForm, setWaxForm] = useState(ski.waxForm || lookupProductForm(ski.product) || "");
+  const initLayers = ski.layers?.length ? ski.layers : migrateSkiToLayers(ski, category, testType);
+  const [layers, setLayers] = useState(initLayers);
   const [notes, setNotes] = useState(ski.notes || "");
   const [feelNotes, setFeelNotes] = useState(ski.feelNotes || "");
   const [showPhotos, setShowPhotos] = useState(false);
-  const isStruct = testType === "Hand structure";
-  const isKick = category === "kick";
-  const productLabel = isStruct ? "Structure Tool" : isKick ? "Kick Wax" : "Glide Wax";
-  const productPlaceholder = isStruct ? "e.g. Speedy Z1N-36\u2026" : isKick ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026";
-  const productSuggestions = isStruct ? vocab?.structures || [] : isKick ? vocab?.kickProducts || vocab?.products || [] : vocab?.glideProducts || vocab?.products || [];
   return /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 14, marginBottom: 6, border: "2px solid var(--ink)" } }, showPhotos && onPhotoSave && /* @__PURE__ */ React.createElement(
     PhotoSheet,
     {
@@ -19068,28 +19744,13 @@ function SkiEditInline({ ski, vocab, onSave, onCancel, onPhotoSave, teamCode, ev
       onClose: () => setShowPhotos(false)
     }
   ), /* @__PURE__ */ React.createElement(
-    ACI,
+    SkiLayerEditor,
     {
-      label: productLabel,
-      value: product,
-      onChange: (v) => {
-        setProduct(v);
-        const f = lookupProductForm(v);
-        if (f) setWaxForm(f);
-      },
-      onCommit: (v) => {
-      },
-      suggestions: productSuggestions,
-      placeholder: productPlaceholder
-    }
-  ), !isStruct && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category, value: waxForm, onChange: setWaxForm })), /* @__PURE__ */ React.createElement(
-    ACI,
-    {
-      label: "Application",
-      value: application,
-      onChange: setApplication,
-      suggestions: vocab?.applications || [],
-      placeholder: isStruct ? "e.g. 3 passes tip-to-tail" : "Iron temp, layers\u2026"
+      layers,
+      category,
+      testType,
+      vocab,
+      onChange: setLayers
     }
   ), /* @__PURE__ */ React.createElement(TA, { label: "Notes", value: notes, onChange: setNotes, rows: 2, mic: true }), /* @__PURE__ */ React.createElement(TA, { label: "Feel Notes", value: feelNotes, onChange: setFeelNotes, rows: 2, mic: true }), ski.photos?.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Photos (", ski.photos.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, ski.photos.map((p) => /* @__PURE__ */ React.createElement(
     "img",
@@ -19100,18 +19761,7 @@ function SkiEditInline({ ski, vocab, onSave, onCancel, onPhotoSave, teamCode, ev
       onClick: () => setShowPhotos(true),
       style: { width: 52, height: 52, objectFit: "cover", borderRadius: 4, cursor: "pointer" }
     }
-  )))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: () => {
-    if (product && waxForm) rememberProductForm(product, waxForm);
-    onSave({ product, application, waxForm: isStruct ? "" : waxForm || void 0, notes, feelNotes });
-  } }, "Save"), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      className: "btn-ghost",
-      style: { flex: 1 },
-      onClick: () => setShowPhotos(true)
-    },
-    "Photos"
-  ), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: onCancel }, "Cancel")));
+  )))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: () => onSave({ layers, notes, feelNotes }) }, "Save"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: () => setShowPhotos(true) }, "Photos"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: onCancel }, "Cancel")));
 }
 function SessionTempButton({ kind, icon, color, readings = [], onAdd, onDelete, useCelsius, onUnitToggle }) {
   const [open, setOpen] = useState(false);
@@ -20244,11 +20894,11 @@ function DeleteToast({ label, onUndo, onCommit, seconds = 5 }) {
   ));
 }
 const MSG_TYPES = [
-  { id: "wax-call", label: "Wax Call", icon: "\u{1F3BF}", color: "var(--blue)" },
-  { id: "alert", label: "Alert", icon: "\u26A0", color: "var(--amber)" },
-  { id: "note", label: "Note", icon: "\u{1F4CB}", color: "var(--ink)" }
+  { id: "wax-call", label: "Wax Call", iconEl: (c) => /* @__PURE__ */ React.createElement(SkiIcon, { size: 13, color: c || "var(--blue)" }), color: "var(--blue)" },
+  { id: "alert", label: "Alert", iconEl: (c) => /* @__PURE__ */ React.createElement(AlertTriIcon, { size: 13, color: c || "var(--amber)" }), color: "var(--amber)" },
+  { id: "note", label: "Note", iconEl: (c) => /* @__PURE__ */ React.createElement(ClipboardIcon, { size: 13, color: c || "var(--ink)" }), color: "var(--ink)" }
 ];
-function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
+function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode, compact = false }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [type, setType] = useState("wax-call");
@@ -20293,7 +20943,7 @@ function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
       return "";
     }
   }
-  return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: compact ? 0 : 16 } }, /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => {
@@ -20305,14 +20955,14 @@ function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "12px 14px",
-        borderRadius: 10,
+        padding: compact ? "10px 12px" : "12px 14px",
+        borderRadius: compact ? "8px" : "10px",
         border: "1px solid var(--rule)",
         background: "var(--paper-2)",
         cursor: "pointer"
       }
     },
-    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16 } }, "\u{1F4E1}"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 700 } }, "Team Board"), messages.length > 0 && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-mid)" } }, messages.length, " message", messages.length !== 1 ? "s" : "")),
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(RadioIcon, { size: 16, color: "var(--ink-mid)" }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: compact ? 13 : 14, fontWeight: 700 } }, "Team Board"), messages.length > 0 && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-mid)" } }, messages.length, " message", messages.length !== 1 ? "s" : "")),
     /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, unread > 0 && !open && /* @__PURE__ */ React.createElement("span", { style: {
       background: "var(--red)",
       color: "#fff",
@@ -20320,7 +20970,7 @@ function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
       fontSize: 11,
       fontWeight: 700,
       padding: "2px 7px"
-    } }, unread, " new"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, open ? "\u25B2" : "\u25BC"))
+    } }, unread, " new"), /* @__PURE__ */ React.createElement(ChevronIcon, { size: 14, color: "var(--ink-faint)", up: open }))
   ), open && /* @__PURE__ */ React.createElement("div", { style: {
     border: "1px solid var(--rule)",
     borderTop: "none",
@@ -20340,7 +20990,7 @@ function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
       justifyContent: "space-between",
       alignItems: "flex-start",
       gap: 8
-    } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13 } }, t.icon), /* @__PURE__ */ React.createElement("span", { style: {
+    } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 4 } }, t.iconEl("#fff" === t.color ? "var(--ink)" : t.color), /* @__PURE__ */ React.createElement("span", { style: {
       fontSize: 11,
       fontWeight: 700,
       color: t.color,
@@ -20351,13 +21001,7 @@ function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
       {
         onClick: () => onDelete(msg.id),
         className: "btn-text",
-        style: {
-          fontSize: 16,
-          color: "var(--ink-faint)",
-          padding: "0 4px",
-          flexShrink: 0,
-          lineHeight: 1
-        }
+        style: { color: "var(--ink-faint)", padding: "0 4px", flexShrink: 0 }
       },
       "\xD7"
     )));
@@ -20368,18 +21012,22 @@ function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
       onClick: () => setType(t.id),
       style: {
         flex: 1,
-        padding: "6px 4px",
+        padding: "7px 4px",
         borderRadius: 8,
-        border: "1px solid var(--rule)",
+        border: "1px solid",
+        borderColor: type === t.id ? t.color : "var(--rule)",
         fontSize: 11,
         fontWeight: 600,
         cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
         background: type === t.id ? t.color : "var(--paper-2)",
         color: type === t.id ? "#fff" : "var(--ink)"
       }
     },
-    t.icon,
-    " ",
+    t.iconEl(type === t.id ? "#fff" : t.color),
     t.label
   ))), /* @__PURE__ */ React.createElement(
     "input",
@@ -20387,7 +21035,7 @@ function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
       className: "inp",
       value: author,
       onChange: (e) => setAuthor(e.target.value),
-      placeholder: "Your name (e.g. Ethan)",
+      placeholder: "Your name",
       style: { marginBottom: 6, fontSize: 13 }
     }
   ), /* @__PURE__ */ React.createElement(
@@ -20396,7 +21044,7 @@ function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
       className: "inp",
       value: text,
       onChange: (e) => setText(e.target.value),
-      placeholder: type === "wax-call" ? "e.g. Swix TS7 + Rode RX42 base, structure Z1N-36 on A-fleet" : type === "alert" ? "e.g. Snow changing \u2014 retest warm waxes" : "e.g. B1 and B3 running slow on uphills",
+      placeholder: type === "wax-call" ? "e.g. Swix TS7 + Rode RX42, structure LM on A-fleet" : type === "alert" ? "e.g. Snow changing \u2014 retest warm waxes" : "e.g. B1 and B3 running slow on uphills",
       rows: 2,
       style: { marginBottom: 8, fontSize: 13 },
       onKeyDown: (e) => {
@@ -20409,8 +21057,16 @@ function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
       className: "btn",
       onClick: handleSend,
       disabled: !text.trim() || sending,
-      style: { width: "100%", fontSize: 14 }
+      style: {
+        width: "100%",
+        fontSize: 14,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8
+      }
     },
+    /* @__PURE__ */ React.createElement(SendIcon, { size: 14, color: "#fff" }),
     sending ? "Sending\u2026" : "Send to Team"
   ))));
 }
@@ -20765,8 +21421,10 @@ function TeamSelector({ onJoin }) {
     /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-mid)", lineHeight: 1.6, paddingLeft: 46 } }, "Run ski comparisons, record advance and eliminate results, log temperatures, and add feel notes. Optimised for gloves and one hand.")
   )))));
 }
-function TeamBar({ teamCode, syncStatus, darkMode, onToggleDark, onLeave, useCelsius, onUnitToggle, onFleets, appMode, onSwitchMode }) {
+function TeamBar({ teamCode, syncStatus, darkMode, onToggleDark, onLeave, useCelsius, onUnitToggle, onFleets, appMode, onSwitchMode, messages = [], onSendMessage, onDeleteMessage }) {
   const [copied, setCopied] = useState(false);
+  const [msgOpen, setMsgOpen] = useState(false);
+  const { permission: notifPerm, request: requestNotif } = useNotificationPermission();
   const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
   const statusColor = isOffline ? "var(--ink-faint)" : syncStatus === "saving" ? "var(--amber)" : syncStatus === "error" ? "var(--red)" : "var(--green)";
   function copy() {
@@ -20775,14 +21433,18 @@ function TeamBar({ teamCode, syncStatus, darkMode, onToggleDark, onLeave, useCel
       setTimeout(() => setCopied(false), 2e3);
     });
   }
-  const modeLabel = appMode === "waxroom" ? "Field view \u2192" : "Wax Room \u2192";
+  const modeLabel = appMode === "waxroom" ? "Field \u2192" : "Wax Room \u2192";
+  const unread = messages.filter((m) => {
+    const seen = lsGet(`waxlab:msgSeen:${teamCode}`) || 0;
+    return new Date(m.createdAt).getTime() > seen;
+  }).length;
   function StatusDot() {
     if (isOffline) return /* @__PURE__ */ React.createElement(WifiOffIcon, { size: 12, color: "var(--ink-faint)" });
     if (syncStatus === "saving") return /* @__PURE__ */ React.createElement(ArrowUpIcon, { size: 12, color: "var(--amber)" });
     if (syncStatus === "error") return /* @__PURE__ */ React.createElement(EliminateIcon, { size: 12, color: "var(--red)" });
     return /* @__PURE__ */ React.createElement(CheckIcon, { size: 12, color: "var(--green)" });
   }
-  return /* @__PURE__ */ React.createElement("div", { className: "team-bar no-print" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" } }, teamCode), supabaseConfigured && /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "team-bar no-print" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" } }, teamCode), supabaseConfigured && /* @__PURE__ */ React.createElement(
     "span",
     {
       className: "mono",
@@ -20790,20 +21452,81 @@ function TeamBar({ teamCode, syncStatus, darkMode, onToggleDark, onLeave, useCel
     },
     /* @__PURE__ */ React.createElement(StatusDot, null),
     /* @__PURE__ */ React.createElement("span", null, isOffline ? "offline" : syncStatus === "saving" ? "saving\u2026" : syncStatus === "error" ? "sync error" : syncStatus === "saved" ? "saved" : "")
-  ), !supabaseConfigured && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "local only")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } }, /* @__PURE__ */ React.createElement(UnitPill, { useCelsius, onChange: onUnitToggle }), /* @__PURE__ */ React.createElement(
+  ), !supabaseConfigured && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "local only")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } }, /* @__PURE__ */ React.createElement(UnitPill, { useCelsius, onChange: onUnitToggle }), onSendMessage && notifPerm === "default" && /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: requestNotif,
+      style: {
+        background: "none",
+        border: "1px solid var(--amber)",
+        borderRadius: 6,
+        padding: "4px 8px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        minHeight: 30,
+        color: "var(--amber)",
+        fontSize: 11,
+        fontWeight: 600
+      },
+      title: "Enable notifications for team alerts"
+    },
+    /* @__PURE__ */ React.createElement(AlertTriIcon, { size: 12, color: "var(--amber)" }),
+    "Alerts"
+  ), onSendMessage && /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setMsgOpen((o) => !o),
+      style: {
+        position: "relative",
+        background: "none",
+        border: "1px solid var(--rule)",
+        borderColor: msgOpen ? "var(--ink)" : "var(--rule)",
+        borderRadius: 6,
+        padding: "4px 8px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        minHeight: 30,
+        color: msgOpen ? "var(--ink)" : "var(--ink-mid)"
+      }
+    },
+    /* @__PURE__ */ React.createElement(RadioIcon, { size: 13, color: msgOpen ? "var(--ink)" : "var(--ink-mid)" }),
+    /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 600 } }, "Board"),
+    notifPerm === "granted" && /* @__PURE__ */ React.createElement(CheckIcon, { size: 10, color: "var(--green)" }),
+    unread > 0 && !msgOpen && /* @__PURE__ */ React.createElement("span", { style: {
+      position: "absolute",
+      top: -4,
+      right: -4,
+      minWidth: 14,
+      height: 14,
+      borderRadius: 7,
+      background: "var(--red)",
+      color: "#fff",
+      fontSize: 8,
+      fontWeight: 800,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "0 3px",
+      lineHeight: 1
+    } }, unread > 9 ? "9+" : unread)
+  ), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: onToggleDark,
       className: "btn-ghost",
-      style: { fontSize: 12, padding: "4px 10px", minHeight: 30 }
+      style: { fontSize: 11, padding: "4px 8px", minHeight: 30 }
     },
-    darkMode ? "Light" : "Dark"
+    darkMode ? /* @__PURE__ */ React.createElement(SunIcon, { size: 13, color: "var(--ink-mid)" }) : /* @__PURE__ */ React.createElement(MoonIcon, { size: 13, color: "var(--ink-mid)" })
   ), /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: onFleets,
       className: "btn-ghost",
-      style: { fontSize: 12, padding: "4px 10px", minHeight: 30 }
+      style: { fontSize: 11, padding: "4px 8px", minHeight: 30 }
     },
     "Fleets"
   ), onSwitchMode && /* @__PURE__ */ React.createElement(
@@ -20811,7 +21534,7 @@ function TeamBar({ teamCode, syncStatus, darkMode, onToggleDark, onLeave, useCel
     {
       onClick: onSwitchMode,
       className: "btn-ghost",
-      style: { fontSize: 12, padding: "4px 10px", minHeight: 30 }
+      style: { fontSize: 11, padding: "4px 8px", minHeight: 30 }
     },
     modeLabel
   ), /* @__PURE__ */ React.createElement(
@@ -20819,10 +21542,83 @@ function TeamBar({ teamCode, syncStatus, darkMode, onToggleDark, onLeave, useCel
     {
       onClick: copy,
       className: "btn-ghost",
-      style: { fontSize: 12, padding: "4px 10px", minHeight: 30 }
+      style: { fontSize: 11, padding: "4px 8px", minHeight: 30 }
     },
     copied ? "\u2713" : "Share"
-  ), /* @__PURE__ */ React.createElement("button", { onClick: onLeave, className: "btn-text", style: { fontSize: 12 } }, "Switch")));
+  ), /* @__PURE__ */ React.createElement("button", { onClick: onLeave, className: "btn-text", style: { fontSize: 11 } }, "Switch"))), msgOpen && onSendMessage && /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      onClick: () => setMsgOpen(false),
+      style: {
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.35)",
+        zIndex: 500,
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "flex-start"
+      }
+    },
+    /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        onClick: (e) => e.stopPropagation(),
+        style: {
+          width: Math.min(420, window.innerWidth - 16),
+          maxHeight: "90vh",
+          background: "var(--paper)",
+          borderRadius: "0 0 0 12px",
+          overflowY: "auto",
+          boxShadow: "0 8px 40px rgba(0,0,0,0.2)",
+          border: "1px solid var(--rule)",
+          borderTop: "none",
+          borderRight: "none"
+        }
+      },
+      /* @__PURE__ */ React.createElement("div", { style: {
+        padding: "14px 16px 0",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        borderBottom: "1px solid var(--rule)",
+        paddingBottom: 12,
+        marginBottom: 12,
+        position: "sticky",
+        top: 0,
+        background: "var(--paper)",
+        zIndex: 1
+      } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(RadioIcon, { size: 16, color: "var(--ink)" }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 15, fontWeight: 700 } }, "Team Board"), /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+        fontSize: 10,
+        color: "var(--ink-faint)",
+        letterSpacing: "0.08em"
+      } }, teamCode)), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => setMsgOpen(false),
+          style: {
+            background: "none",
+            border: "none",
+            color: "var(--ink-faint)",
+            fontSize: 20,
+            cursor: "pointer",
+            lineHeight: 1,
+            padding: "0 2px"
+          }
+        },
+        "\xD7"
+      )),
+      /* @__PURE__ */ React.createElement("div", { style: { padding: "0 16px 16px" } }, /* @__PURE__ */ React.createElement(
+        TeamMessagesPanel,
+        {
+          messages,
+          onSend: onSendMessage,
+          onDelete: onDeleteMessage,
+          teamCode,
+          compact: true
+        }
+      ))
+    )
+  ));
 }
 class AppErrorBoundary extends React.Component {
   constructor(props) {
@@ -20998,6 +21794,9 @@ function App() {
         setMessages((prev) => {
           const msgs = msgEvent.type === "delete" ? prev.filter((m) => m.id !== msgEvent.id) : prev.some((m) => m.id === msgEvent.msg?.id) ? prev : [...prev, msgEvent.msg].slice(-50);
           lsSet(MSG_KEY(code), msgs);
+          if (msgEvent.type === "new" && msgEvent.msg) {
+            fireMessageNotification(msgEvent.msg, code);
+          }
           return msgs;
         });
       }
@@ -21125,6 +21924,9 @@ function App() {
         setMessages((prev) => {
           const msgs2 = msgEvent.type === "delete" ? prev.filter((m) => m.id !== msgEvent.id) : prev.some((m) => m.id === msgEvent.msg?.id) ? prev : [...prev, msgEvent.msg].slice(-50);
           lsSet(MSG_KEY(code), msgs2);
+          if (msgEvent.type === "new" && msgEvent.msg) {
+            fireMessageNotification(msgEvent.msg, code);
+          }
           return msgs2;
         });
       }
@@ -21322,6 +22124,15 @@ function App() {
         setView("fleets");
       },
       appMode,
+      messages,
+      onSendMessage: async (msg) => {
+        const updated = await sendMessage(teamCode, msg);
+        setMessages(updated);
+      },
+      onDeleteMessage: async (id) => {
+        const updated = await deleteMessage(teamCode, id);
+        setMessages(updated);
+      },
       onSwitchMode: appMode === "field" ? () => {
         setAppMode("waxroom");
         setView("dashboard");
@@ -24568,7 +25379,7 @@ function WaxRoomDashboard({
     borderBottom: `1px solid ${C.rule}`,
     background: C.surface,
     overflowX: "auto"
-  } }, [["overview", "Overview"], ["schedule", "Schedule"], ["conditions", "Conditions"], ["messages", "\u{1F4E1} Board"]].map(([id, label]) => /* @__PURE__ */ React.createElement(
+  } }, [["overview", "Overview"], ["schedule", "Schedule"], ["conditions", "Conditions"], ["messages", "Board"]].map(([id, label]) => /* @__PURE__ */ React.createElement(
     "button",
     {
       key: id,
