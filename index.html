@@ -304,6 +304,16 @@ async function loadAllEvents() {
 }
 const WRITE_QUEUE_KEY = "waxlab:writeQueue";
 const DELETE_QUEUE_KEY = "waxlab:deleteQueue";
+const MISC_QUEUE_KEY = "waxlab:miscQueue";
+function queueMiscWrite(type, teamCode, data) {
+  try {
+    const q = lsGet(MISC_QUEUE_KEY) || [];
+    const updated = q.filter((r) => !(r.type === type && r.teamCode === teamCode));
+    updated.push({ type, teamCode, data, ts: Date.now() });
+    lsSet(MISC_QUEUE_KEY, updated);
+  } catch (e) {
+  }
+}
 function queueDelete(teamCode, eventId) {
   try {
     const q = lsGet(DELETE_QUEUE_KEY) || [];
@@ -373,6 +383,51 @@ async function flushWriteQueue() {
         if (!error) dequeueDelete(eventId);
       } catch (e) {
       }
+    }
+  }
+  const mq = lsGet(MISC_QUEUE_KEY) || [];
+  if (mq.length) {
+    const freshM = mq.filter((r) => (r.ts || 0) > cutoff);
+    if (freshM.length !== mq.length) lsSet(MISC_QUEUE_KEY, freshM);
+    const flushed = [];
+    for (const item of [...freshM]) {
+      try {
+        let ok = false;
+        const { type, teamCode, data } = item;
+        if (type === "fleets") {
+          const { error } = await db.from("waxlab_fleets").upsert(
+            { team_code: teamCode, data, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
+            { onConflict: "team_code" }
+          );
+          ok = !error;
+        } else if (type === "catalog") {
+          const { error } = await db.from("waxlab_catalog").upsert(
+            { team_code: teamCode, data, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
+            { onConflict: "team_code" }
+          );
+          ok = !error;
+        } else if (type === "structure_catalog") {
+          const { error } = await db.from("waxlab_structure_catalog").upsert(
+            { team_code: teamCode, data, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
+            { onConflict: "team_code" }
+          );
+          ok = !error;
+        } else if (type === "vocab") {
+          const { error } = await db.from("waxlab_vocab").upsert(
+            { team_code: teamCode, category: data.category, terms: data.terms },
+            { onConflict: "team_code,category" }
+          );
+          ok = !error;
+        }
+        if (ok) flushed.push(item);
+      } catch (e) {
+      }
+    }
+    if (flushed.length) {
+      const remaining = freshM.filter(
+        (r) => !flushed.some((f) => f.type === r.type && f.teamCode === r.teamCode && (!r.data?.category || r.data?.category === f.data?.category))
+      );
+      lsSet(MISC_QUEUE_KEY, remaining);
     }
   }
 }
@@ -496,8 +551,11 @@ async function addVocabTerms(teamCode, category, newTerms) {
       const merged = [.../* @__PURE__ */ new Set([...data?.terms || [], ...vocab[category]])].sort();
       return db.from("waxlab_vocab").upsert({ team_code: teamCode, category, terms: merged }, { onConflict: "team_code,category" });
     }).then(({ error }) => {
-      if (error) console.warn("addVocabTerms bg:", error.message);
-    });
+      if (error) {
+        queueMiscWrite("vocab", teamCode, { category, terms: vocab[category] });
+        console.warn("addVocabTerms bg:", error.message);
+      }
+    }).catch(() => queueMiscWrite("vocab", teamCode, { category, terms: vocab[category] }));
   }
 }
 async function removeVocabTerm(teamCode, category, term) {
@@ -521,8 +579,11 @@ async function saveCatalog(teamCode, entries) {
       { team_code: teamCode, data: entries, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
       { onConflict: "team_code" }
     ).then(({ error }) => {
-      if (error) console.warn("saveCatalog bg:", error.message);
-    });
+      if (error) {
+        queueMiscWrite("catalog", teamCode, entries);
+        console.warn("saveCatalog bg:", error.message);
+      }
+    }).catch(() => queueMiscWrite("catalog", teamCode, entries));
   }
 }
 async function loadStructureCatalog(teamCode) {
@@ -535,8 +596,59 @@ async function saveStructureCatalog(teamCode, entries) {
       { team_code: teamCode, data: entries, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
       { onConflict: "team_code" }
     ).then(({ error }) => {
-      if (error) console.warn("saveStructureCatalog bg:", error.message);
-    });
+      if (error) {
+        queueMiscWrite("structure_catalog", teamCode, entries);
+        console.warn("saveStructureCatalog bg:", error.message);
+      }
+    }).catch(() => queueMiscWrite("structure_catalog", teamCode, entries));
+  }
+}
+const MSG_KEY = (code) => `waxlab:messages:${code}`;
+const MSG_MAX = 50;
+async function loadMessages(teamCode) {
+  return lsGet(MSG_KEY(teamCode)) || [];
+}
+async function sendMessage(teamCode, msg) {
+  const msgs = lsGet(MSG_KEY(teamCode)) || [];
+  const updated = [...msgs, msg].slice(-MSG_MAX);
+  lsSet(MSG_KEY(teamCode), updated);
+  if (db) {
+    try {
+      await db.from("waxlab_messages").insert({
+        id: msg.id,
+        team_code: teamCode,
+        data: msg,
+        created_at: msg.createdAt
+      });
+    } catch (e) {
+      console.warn("sendMessage:", e.message);
+    }
+  }
+  return updated;
+}
+async function deleteMessage(teamCode, msgId) {
+  const msgs = lsGet(MSG_KEY(teamCode)) || [];
+  const updated = msgs.filter((m) => m.id !== msgId);
+  lsSet(MSG_KEY(teamCode), updated);
+  if (db) {
+    try {
+      await db.from("waxlab_messages").delete().eq("id", msgId);
+    } catch (e) {
+    }
+  }
+  return updated;
+}
+async function loadMessagesFromSupabase(teamCode) {
+  if (!db) return [];
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString();
+    const { data, error } = await db.from("waxlab_messages").select("data").eq("team_code", teamCode).gte("created_at", since).order("created_at", { ascending: true }).limit(MSG_MAX);
+    if (error || !data) return [];
+    const msgs = data.map((r) => r.data).filter(Boolean);
+    lsSet(MSG_KEY(teamCode), msgs);
+    return msgs;
+  } catch (e) {
+    return lsGet(MSG_KEY(teamCode)) || [];
   }
 }
 async function bgSyncStructureCatalog(teamCode, setStructureCatalog) {
@@ -785,7 +897,7 @@ function enrichCatalogFromWin({ ski, test, session, event, catalog, teamCode, on
     onSave([...all, newEntry]);
   }
 }
-function subscribeToTeam(teamCode, onEventChange, onVocabChange, onFleetChange, onCatalogChange, onStructureCatalogChange) {
+function subscribeToTeam(teamCode, onEventChange, onVocabChange, onFleetChange, onCatalogChange, onStructureCatalogChange, onMessageChange) {
   if (!db) return () => {
   };
   const evCh = db.channel(`waxlab_events:${teamCode}`).on(
@@ -824,12 +936,26 @@ function subscribeToTeam(teamCode, onEventChange, onVocabChange, onFleetChange, 
       if (p.new?.data && onStructureCatalogChange) onStructureCatalogChange(p.new.data);
     }
   ).subscribe();
+  const msgCh = db.channel(`waxlab_messages:${teamCode}`).on(
+    "postgres_changes",
+    { event: "INSERT", schema: "public", table: "waxlab_messages", filter: `team_code=eq.${teamCode}` },
+    (p) => {
+      if (p.new?.data && onMessageChange) onMessageChange({ type: "new", msg: p.new.data });
+    }
+  ).on(
+    "postgres_changes",
+    { event: "DELETE", schema: "public", table: "waxlab_messages", filter: `team_code=eq.${teamCode}` },
+    (p) => {
+      if (p.old?.id && onMessageChange) onMessageChange({ type: "delete", id: p.old.id });
+    }
+  ).subscribe();
   return () => {
     db.removeChannel(evCh);
     db.removeChannel(vocabCh);
     db.removeChannel(fleetCh);
     db.removeChannel(catalogCh);
     db.removeChannel(structCh);
+    db.removeChannel(msgCh);
   };
 }
 const IDB_DB_NAME = "waxlab-photos";
@@ -10472,12 +10598,13 @@ async function saveFleets(teamCode, fleets) {
   if (db) {
     (async () => {
       try {
-        await db.from("waxlab_fleets").upsert(
-          { team_code: teamCode, data: fleets },
+        const { error } = await db.from("waxlab_fleets").upsert(
+          { team_code: teamCode, data: fleets, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
           { onConflict: "team_code" }
         );
+        if (error) queueMiscWrite("fleets", teamCode, fleets);
       } catch (e) {
-        console.warn("saveFleets bg:", e.message);
+        queueMiscWrite("fleets", teamCode, fleets);
       }
     })();
   }
@@ -12433,59 +12560,143 @@ function VoiceCommandBar({ skis, isGlide, onAdvance, onEliminate, onWinner, onRe
     "?"
   )));
 }
+const SKI_CONDITIONS = ["Race ready", "Good", "Fair", "Needs service", "Base damage", "Retired"];
+const SKI_CONDITION_COLORS = {
+  "Race ready": "var(--green)",
+  "Good": "var(--green)",
+  "Fair": "var(--amber)",
+  "Needs service": "var(--amber)",
+  "Base damage": "var(--red)",
+  "Retired": "var(--ink-faint)"
+};
 function FleetSkiRow({ ski, onChange, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+  const condColor = SKI_CONDITION_COLORS[ski.condition] || "var(--ink-faint)";
+  const isRetired = ski.condition === "Retired";
+  const hasFlag = ski.serviceFlag || ski.condition === "Needs service" || ski.condition === "Base damage";
   return /* @__PURE__ */ React.createElement("div", { style: {
-    display: "flex",
-    gap: 6,
-    alignItems: "flex-start",
-    marginBottom: 8,
-    padding: "10px 12px",
-    background: "var(--paper-3)",
-    borderRadius: 6
-  } }, /* @__PURE__ */ React.createElement("div", { style: { flex: "0 0 64px" } }, /* @__PURE__ */ React.createElement(Lbl, null, "ID"), /* @__PURE__ */ React.createElement(
+    marginBottom: 6,
+    borderRadius: 6,
+    border: "1px solid var(--rule)",
+    background: isRetired ? "var(--paper)" : "var(--paper-3)",
+    opacity: isRetired ? 0.55 : 1
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", padding: "8px 10px" } }, /* @__PURE__ */ React.createElement("div", { style: {
+    fontFamily: "monospace",
+    fontWeight: 700,
+    fontSize: 14,
+    letterSpacing: "0.06em",
+    minWidth: 44,
+    color: "var(--ink)"
+  } }, ski.id || "\u2014"), /* @__PURE__ */ React.createElement("div", { style: {
+    flex: 1,
+    fontSize: 12,
+    color: "var(--ink-mid)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap"
+  } }, [ski.make, ski.flex ? `flex ${ski.flex}` : null, ski.grind].filter(Boolean).join(" \xB7 ") || "\u2014"), hasFlag && /* @__PURE__ */ React.createElement(
+    "span",
+    {
+      title: ski.serviceFlag || ski.condition,
+      style: { fontSize: 14, flexShrink: 0 }
+    },
+    "\u2691"
+  ), /* @__PURE__ */ React.createElement("div", { style: {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    background: condColor,
+    flexShrink: 0,
+    border: "1px solid var(--rule)"
+  } }), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setExpanded((x) => !x),
+      className: "btn-text",
+      style: { fontSize: 12, padding: "2px 6px", color: "var(--ink-mid)", flexShrink: 0 }
+    },
+    expanded ? "\u25B2" : "\u25BC"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: onDelete,
+      className: "btn-text",
+      style: { fontSize: 18, color: "var(--red)", padding: "0 4px", flexShrink: 0 }
+    },
+    "\xD7"
+  )), expanded && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 10px 10px", borderTop: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "ID"), /* @__PURE__ */ React.createElement(
     "input",
     {
       className: "inp mono",
       value: ski.id,
       onChange: (e) => onChange({ ...ski, id: e.target.value.toUpperCase() }),
-      style: { padding: "6px 8px", fontSize: 14, fontWeight: 700, letterSpacing: "0.06em" }
+      style: { fontSize: 14, fontWeight: 700, letterSpacing: "0.06em" }
     }
-  )), /* @__PURE__ */ React.createElement("div", { style: { flex: "1 1 90px" } }, /* @__PURE__ */ React.createElement(Lbl, null, "Make / Model"), /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Make / Model"), /* @__PURE__ */ React.createElement(
     "input",
     {
       className: "inp",
       value: ski.make || "",
       onChange: (e) => onChange({ ...ski, make: e.target.value }),
       placeholder: "e.g. Fischer",
-      style: { padding: "6px 8px", fontSize: 13 }
+      style: { fontSize: 13 }
     }
-  )), /* @__PURE__ */ React.createElement("div", { style: { flex: "0 0 70px" } }, /* @__PURE__ */ React.createElement(Lbl, null, "Flex"), /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Flex"), /* @__PURE__ */ React.createElement(
     "input",
     {
       className: "inp",
       value: ski.flex || "",
       onChange: (e) => onChange({ ...ski, flex: e.target.value }),
       placeholder: "e.g. 54",
-      style: { padding: "6px 8px", fontSize: 13 }
+      style: { fontSize: 13 }
     }
-  )), /* @__PURE__ */ React.createElement("div", { style: { flex: "0 0 80px" } }, /* @__PURE__ */ React.createElement(Lbl, null, "Grind"), /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Grind"), /* @__PURE__ */ React.createElement(
     "input",
     {
       className: "inp",
       value: ski.grind || "",
       onChange: (e) => onChange({ ...ski, grind: e.target.value }),
       placeholder: "e.g. HF3",
-      style: { padding: "6px 8px", fontSize: 13 }
+      style: { fontSize: 13 }
     }
-  )), /* @__PURE__ */ React.createElement("div", { style: { flex: "0 0 28px", paddingTop: 22 } }, /* @__PURE__ */ React.createElement(
-    "button",
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Last Grind Date"), /* @__PURE__ */ React.createElement(
+    "input",
     {
-      onClick: onDelete,
-      className: "btn-text",
-      style: { fontSize: 20, color: "var(--red)", padding: "0 4px" }
+      className: "inp",
+      type: "date",
+      value: ski.grindDate || "",
+      onChange: (e) => onChange({ ...ski, grindDate: e.target.value }),
+      style: { fontSize: 13 }
+    }
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Condition"), /* @__PURE__ */ React.createElement(
+    "select",
+    {
+      className: "inp",
+      value: ski.condition || "",
+      onChange: (e) => onChange({ ...ski, condition: e.target.value }),
+      style: { fontSize: 13, color: SKI_CONDITION_COLORS[ski.condition] || "var(--ink)" }
     },
-    "\xD7"
-  )));
+    /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 set condition \u2014"),
+    SKI_CONDITIONS.map((c) => /* @__PURE__ */ React.createElement("option", { key: c, value: c }, c))
+  )), /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "1/-1" } }, /* @__PURE__ */ React.createElement(Lbl, null, "Service Flag / Note"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      className: "inp",
+      value: ski.serviceFlag || "",
+      onChange: (e) => onChange({ ...ski, serviceFlag: e.target.value }),
+      placeholder: "e.g. P-tex repair needed, edge work, delamination\u2026",
+      style: { fontSize: 13 }
+    }
+  )), /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "1/-1" } }, /* @__PURE__ */ React.createElement(Lbl, null, "Notes"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      className: "inp",
+      value: ski.notes || "",
+      onChange: (e) => onChange({ ...ski, notes: e.target.value }),
+      placeholder: "Athlete assignment, wax history, storage notes\u2026",
+      style: { fontSize: 13 }
+    }
+  )))));
 }
 function FleetCard({ fleet, onChange, onDelete }) {
   const [expanded, setExpanded] = useState(true);
@@ -12585,7 +12796,7 @@ function FleetCard({ fleet, onChange, onDelete }) {
   }
   function addSki() {
     const nextId = fleet.skis.length > 0 ? nextSkiId(fleet.skis) : "";
-    onChange({ ...fleet, skis: [...fleet.skis, { id: nextId, make: "", flex: "", grind: "", notes: "" }] });
+    onChange({ ...fleet, skis: [...fleet.skis, { id: nextId, make: "", flex: "", grind: "", grindDate: "", condition: "", serviceFlag: "", notes: "" }] });
   }
   function removeSki(idx) {
     onChange({ ...fleet, skis: fleet.skis.filter((_, i) => i !== idx) });
@@ -12630,7 +12841,17 @@ function FleetCard({ fleet, onChange, onDelete }) {
       style: { fontSize: 20, color: "var(--red)", padding: "0 4px" }
     },
     "\xD7"
-  ))), expanded && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 12px", borderTop: "1px solid var(--rule)" } }, fleet.skis.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-faint)", padding: "10px 0" } }, 'No skis yet. Use Quick Add below (e.g. "8 Fischers with PL2+") or tap + Add Single Ski.'), fleet.skis.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, paddingTop: 10, paddingBottom: 2 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: "0 0 64px" } }, /* @__PURE__ */ React.createElement(Lbl, null, "ID")), /* @__PURE__ */ React.createElement("div", { style: { flex: "1 1 90px" } }, /* @__PURE__ */ React.createElement(Lbl, null, "Make / Model")), /* @__PURE__ */ React.createElement("div", { style: { flex: "0 0 70px" } }, /* @__PURE__ */ React.createElement(Lbl, null, "Flex")), /* @__PURE__ */ React.createElement("div", { style: { flex: "0 0 80px" } }, /* @__PURE__ */ React.createElement(Lbl, null, "Grind")), /* @__PURE__ */ React.createElement("div", { style: { flex: "0 0 28px" } })), fleet.skis.map((ski, i) => /* @__PURE__ */ React.createElement(
+  ))), expanded && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 12px", borderTop: "1px solid var(--rule)" } }, fleet.skis.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-faint)", padding: "10px 0" } }, 'No skis yet. Use Quick Add below (e.g. "8 Fischers with PL2+") or tap + Add Single Ski.'), fleet.skis.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    padding: "8px 0 4px",
+    borderBottom: "1px solid var(--rule)",
+    marginBottom: 4,
+    display: "flex",
+    gap: 8
+  } }, /* @__PURE__ */ React.createElement("span", { style: { flex: 1 } }, "Tap \u25BC to expand \xB7 colored dot = condition"), /* @__PURE__ */ React.createElement("span", null, "\u2691 = flagged")), fleet.skis.map((ski, i) => /* @__PURE__ */ React.createElement(
     FleetSkiRow,
     {
       key: i,
@@ -12736,7 +12957,7 @@ function FleetRegistryView({ teamCode, fleets: fleetsProp, onSave, onBack }) {
     const existing = (fleets || []).filter((f) => f.category === category);
     const name = category === "glide" ? `Glide Fleet ${existing.length + 1}` : `Kick Fleet ${existing.length + 1}`;
     const prefix = category === "glide" ? String.fromCharCode(65 + existing.length) : "K";
-    const skis = [1, 2, 3, 4].map((n) => ({ id: `${prefix}${n}`, make: "", flex: "", grind: "", notes: "" }));
+    const skis = [1, 2, 3, 4].map((n) => ({ id: `${prefix}${n}`, make: "", flex: "", grind: "", grindDate: "", condition: "", serviceFlag: "", notes: "" }));
     persist([...fleets || [], { id: uid(), name, category, skis, notes: "" }]);
   }
   function updateFleet(id, patch) {
@@ -12770,7 +12991,36 @@ function FleetRegistryView({ teamCode, fleets: fleetsProp, onSave, onBack }) {
     color: "var(--ink-faint)",
     marginBottom: 16,
     lineHeight: 1.5
-  } }, "\u26A0 Supabase not configured \u2014 fleets are saved on this device only. Configure Supabase to share fleet definitions with your whole team."), /* @__PURE__ */ React.createElement("div", { style: {
+  } }, "\u26A0 Supabase not configured \u2014 fleets are saved on this device only. Configure Supabase to share fleet definitions with your whole team."), (() => {
+    const allSkis = (fleets || []).flatMap((f) => f.skis || []);
+    const needsService = allSkis.filter(
+      (s) => s.condition === "Needs service" || s.condition === "Base damage" || s.serviceFlag
+    );
+    const retired = allSkis.filter((s) => s.condition === "Retired");
+    if (needsService.length === 0 && retired.length === 0) return null;
+    return /* @__PURE__ */ React.createElement("div", { style: {
+      marginBottom: 16,
+      borderRadius: 8,
+      overflow: "hidden",
+      border: "1px solid var(--rule)"
+    } }, needsService.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "10px 14px", background: "var(--paper-2)" } }, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: "var(--amber)",
+      marginBottom: 6
+    } }, "\u2691 Needs attention (", needsService.length, ")"), needsService.map((s) => /* @__PURE__ */ React.createElement("div", { key: s.id, style: {
+      fontSize: 12,
+      color: "var(--ink)",
+      marginBottom: 3,
+      display: "flex",
+      gap: 6,
+      alignItems: "baseline"
+    } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontWeight: 700, minWidth: 36 } }, s.id), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--amber)" } }, s.condition || "Flagged"), s.serviceFlag && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-mid)" } }, "\u2014 ", s.serviceFlag)))), retired.length > 0 && /* @__PURE__ */ React.createElement("div", { style: {
+      padding: "8px 14px",
+      background: "var(--paper)",
+      borderTop: needsService.length > 0 ? "1px solid var(--rule)" : "none"
+    } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, "Retired: ", retired.map((s) => s.id).join(", "))));
+  })(), /* @__PURE__ */ React.createElement("div", { style: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -13860,16 +14110,37 @@ function WeatherPanel({ weather = {}, onChange, vocab, onVocabAdd, useCelsius, o
       style: { marginBottom: 8 },
       options: ["Clear", "Mostly Clear", "Partly Cloudy", "Overcast", "Foggy", "Snowing", "Blowing Snow"]
     }
-  ), /* @__PURE__ */ React.createElement(
-    SI,
+  ), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Snow Crystal Type"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 } }, [
+    { label: "New", sub: "< 24h", val: "New snow" },
+    { label: "Settled", sub: "1\u20133 days", val: "Settled" },
+    { label: "Transformed", sub: "old/groomed", val: "Transformed" },
+    { label: "Faceted", sub: "dry angular", val: "Faceted" },
+    { label: "Granular", sub: "corn/wet", val: "Granular" },
+    { label: "Artificial", sub: "manmade", val: "Artificial" },
+    { label: "Falling", sub: "active snow", val: "Falling snow" },
+    { label: "Wet", sub: "saturated", val: "Wet" },
+    { label: "Glazed", sub: "ice crust", val: "Glazed" },
+    { label: "Variable", sub: "mixed", val: "Variable" }
+  ].map(({ label, sub, val }) => /* @__PURE__ */ React.createElement(
+    "button",
     {
-      label: "Snow Type",
-      value: w.snowType,
-      onChange: (v) => up("snowType", v),
-      style: { marginBottom: 8 },
-      options: ["Dry powder", "Dry packed", "Wet packed", "Wet", "Transformed", "Granular", "Variable"]
-    }
-  ), /* @__PURE__ */ React.createElement(
+      key: val,
+      onClick: () => up("snowType", w.snowType === val ? null : val),
+      style: {
+        padding: "5px 10px",
+        borderRadius: 16,
+        fontSize: 12,
+        cursor: "pointer",
+        border: "1px solid var(--rule)",
+        lineHeight: 1.3,
+        textAlign: "center",
+        background: w.snowType === val ? "var(--accent)" : "var(--paper-2)",
+        color: w.snowType === val ? "#fff" : "var(--ink)"
+      }
+    },
+    /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, label),
+    /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, opacity: 0.75 } }, sub)
+  )))), /* @__PURE__ */ React.createElement(
     ACI,
     {
       label: "Grooming / Snow Age",
@@ -14040,13 +14311,32 @@ function WaxRecommendPanel({ allEvents, session, event, useCelsius, catalog, str
               category: test.category,
               standing: ski.standing,
               tempF: testSnow,
-              event: ev.name
+              event: ev.name,
+              source: "your team"
             });
           });
         });
       });
     });
-    return wins.slice(0, 15);
+    const enrichments = lsGet("waxlab:seedEnrichments") || {};
+    const allEntries = catalog?.length > 0 ? catalog : WAX_SEED_CATALOG;
+    Object.entries(enrichments).forEach(([seedId, enr]) => {
+      if (!enr?.winCount || enr.winCount < 2) return;
+      const entry = allEntries.find((e) => e.id === seedId);
+      if (!entry) return;
+      const midF = ((entry.tempMinF || 0) + (entry.tempMaxF || 0)) / 2;
+      if (Math.abs(midF - ref) > 20) return;
+      if (wins.some((w) => w.product === entry.product)) return;
+      wins.push({
+        product: entry.product,
+        category: entry.category,
+        standing: "Winner",
+        tempF: midF,
+        event: `${enr.winCount} wins across all teams`,
+        source: "cross-team"
+      });
+    });
+    return wins.slice(0, 18);
   }
   function buildCatalogSummary(conds2) {
     const all = catalog?.length > 0 ? catalog : WAX_SEED_CATALOG;
@@ -14095,7 +14385,7 @@ function WaxRecommendPanel({ allEvents, session, event, useCelsius, catalog, str
       fmtT(conds2.snowTempF, "Snow temp"),
       fmtT(conds2.airTempF, "Air temp"),
       conds2.humidity != null ? `Humidity: ${conds2.humidity}%` : null,
-      conds2.snowType ? `Snow type: ${conds2.snowType}` : null,
+      conds2.snowType ? `Snow crystal type: ${conds2.snowType}` : null,
       conds2.grooming ? `Grooming/snow age: ${conds2.grooming}` : null,
       conds2.sky ? `Sky: ${conds2.sky}` : null,
       conds2.windMph != null ? `Wind: ${conds2.windMph} mph` : null,
@@ -14107,7 +14397,7 @@ function WaxRecommendPanel({ allEvents, session, event, useCelsius, catalog, str
       setLoading(false);
       return;
     }
-    const pastWinStr = pastWins.length ? "\n\nPAST TEST WINNERS IN SIMILAR CONDITIONS (this team's data):\n" + pastWins.map((w) => `- ${w.product} (${w.category}, ${w.standing}, ~${w.tempF}\xB0F, ${w.event})`).join("\n") : "";
+    const pastWinStr = pastWins.length ? "\n\nPAST WINNERS IN SIMILAR CONDITIONS:\n" + pastWins.map((w) => `- ${w.product} (${w.category}, ${w.standing}, ~${w.tempF}\xB0F, ${w.event}${w.source === "cross-team" ? " [cross-team]" : " [your team]"})`).join("\n") : "";
     const prompt = `You are an expert Nordic ski wax technician. Recommend wax for the following race/training conditions from the catalog provided. Return ONLY valid JSON, no markdown, no preamble.
 
 CURRENT CONDITIONS:
@@ -14145,7 +14435,8 @@ Rules:
 - Reasons must be specific to the conditions (temp, snow type, humidity, snow age). Max 15 words each.
 - For structure: moisture content and snow type are primary drivers, then temperature. Cold dry snow = fine linear or cold-specific tools. Wet/warm snow = cross, chevron, softwood, or coarse patterns. Zero conditions with fine new snow = pine-twig non-linear (e.g. Speedy Z1N-36). Falling snow = Speedy ZSF.
 - If past winner data is provided, weight those wax products higher when within temp range.
-- If conditions are above 32\xB0F or snow type is spring/wet/granular, include klister in kick.`;
+- If conditions are above 32\xB0F or snow crystal type is Granular/Wet/Glazed, include klister in kick.
+- Snow crystal type guidance: New snow \u2192 fine-grained kick wax, anti-static glide (cold dry); Settled \u2192 medium kick; Transformed/Granular \u2192 klister territory; Faceted \u2192 hard dry kick, fine linear structure; Artificial \u2192 anti-static wax, fine linear or cold structure; Falling snow \u2192 ZSF structure roller, new-snow kick; Glazed \u2192 klister binder base; Wet \u2192 klister, coarse structure.`;
     try {
       const res = await fetch("/.netlify/functions/claude-proxy", {
         method: "POST",
@@ -19018,6 +19309,7 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
     setNewTestName("");
     setNewTestCategory("glide");
     setNewTestType("");
+    pushNav();
     setActiveTestId(t.id);
   }
   const TABS = [{ id: "tests", label: "Tests" }, { id: "conditions", label: "Conditions" }, { id: "snowtemps", label: "Temp Log" }];
@@ -19549,6 +19841,7 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
   function addSession() {
     const s = { id: uid(), name: `Session ${(event.sessions || []).length + 1}`, tests: [], snowTemps: [], airTemps: [], createdAt: nowStr(), startedAt: nowStr() };
     upd({ sessions: [...event.sessions || [], s] });
+    pushNav();
     setActiveSessionId(s.id);
   }
   const TABS = [
@@ -19885,7 +20178,178 @@ function DeleteToast({ label, onUndo, onCommit, seconds = 5 }) {
     "Undo"
   ));
 }
-function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore, onProducts, syncStatus, online, setVocab, setCatalog, setFleets }) {
+const MSG_TYPES = [
+  { id: "wax-call", label: "Wax Call", icon: "\u{1F3BF}", color: "var(--blue)" },
+  { id: "alert", label: "Alert", icon: "\u26A0", color: "var(--amber)" },
+  { id: "note", label: "Note", icon: "\u{1F4CB}", color: "var(--ink)" }
+];
+function TeamMessagesPanel({ messages = [], onSend, onDelete, teamCode }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [type, setType] = useState("wax-call");
+  const [author, setAuthor] = useState(() => lsGet("waxlab:msgAuthor") || "");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef(null);
+  const unread = messages.filter((m) => {
+    const seen = lsGet(`waxlab:msgSeen:${teamCode}`) || 0;
+    return new Date(m.createdAt).getTime() > seen;
+  }).length;
+  useEffect(() => {
+    if (open) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      markSeen();
+    }
+  }, [open, messages.length]);
+  function markSeen() {
+    lsSet(`waxlab:msgSeen:${teamCode}`, Date.now());
+  }
+  async function handleSend() {
+    if (!text.trim()) return;
+    setSending(true);
+    const msg = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      text: text.trim(),
+      type,
+      author: author.trim() || "Coach",
+      teamCode,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    lsSet("waxlab:msgAuthor", author.trim() || "Coach");
+    await onSend(msg);
+    setText("");
+    setSending(false);
+  }
+  const typeInfo = (id) => MSG_TYPES.find((t) => t.id === id) || MSG_TYPES[0];
+  function formatTime(iso) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "";
+    }
+  }
+  return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => {
+        setOpen((o) => !o);
+        if (!open) markSeen();
+      },
+      style: {
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "12px 14px",
+        borderRadius: 10,
+        border: "1px solid var(--rule)",
+        background: "var(--paper-2)",
+        cursor: "pointer"
+      }
+    },
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16 } }, "\u{1F4E1}"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 700 } }, "Team Board"), messages.length > 0 && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-mid)" } }, messages.length, " message", messages.length !== 1 ? "s" : "")),
+    /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, unread > 0 && !open && /* @__PURE__ */ React.createElement("span", { style: {
+      background: "var(--red)",
+      color: "#fff",
+      borderRadius: 10,
+      fontSize: 11,
+      fontWeight: 700,
+      padding: "2px 7px"
+    } }, unread, " new"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, open ? "\u25B2" : "\u25BC"))
+  ), open && /* @__PURE__ */ React.createElement("div", { style: {
+    border: "1px solid var(--rule)",
+    borderTop: "none",
+    borderRadius: "0 0 10px 10px",
+    background: "var(--paper)",
+    padding: 12
+  } }, /* @__PURE__ */ React.createElement("div", { style: { maxHeight: 280, overflowY: "auto", marginBottom: 10 } }, messages.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "20px 0", color: "var(--ink-faint)", fontSize: 13 } }, "No messages yet. Post a wax call or note for the team.") : messages.map((msg) => {
+    const t = typeInfo(msg.type);
+    return /* @__PURE__ */ React.createElement("div", { key: msg.id, style: {
+      marginBottom: 8,
+      padding: "10px 12px",
+      background: "var(--paper-2)",
+      borderRadius: 8,
+      borderLeft: `3px solid ${t.color}`
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 8
+    } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13 } }, t.icon), /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: t.color,
+      textTransform: "uppercase",
+      letterSpacing: "0.05em"
+    } }, t.label), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, msg.author, " \xB7 ", formatTime(msg.createdAt))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "var(--ink)", lineHeight: 1.4 } }, msg.text)), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => onDelete(msg.id),
+        className: "btn-text",
+        style: {
+          fontSize: 16,
+          color: "var(--ink-faint)",
+          padding: "0 4px",
+          flexShrink: 0,
+          lineHeight: 1
+        }
+      },
+      "\xD7"
+    )));
+  }), /* @__PURE__ */ React.createElement("div", { ref: bottomRef })), /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--rule)", paddingTop: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 8 } }, MSG_TYPES.map((t) => /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      key: t.id,
+      onClick: () => setType(t.id),
+      style: {
+        flex: 1,
+        padding: "6px 4px",
+        borderRadius: 8,
+        border: "1px solid var(--rule)",
+        fontSize: 11,
+        fontWeight: 600,
+        cursor: "pointer",
+        background: type === t.id ? t.color : "var(--paper-2)",
+        color: type === t.id ? "#fff" : "var(--ink)"
+      }
+    },
+    t.icon,
+    " ",
+    t.label
+  ))), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      className: "inp",
+      value: author,
+      onChange: (e) => setAuthor(e.target.value),
+      placeholder: "Your name (e.g. Ethan)",
+      style: { marginBottom: 6, fontSize: 13 }
+    }
+  ), /* @__PURE__ */ React.createElement(
+    "textarea",
+    {
+      className: "inp",
+      value: text,
+      onChange: (e) => setText(e.target.value),
+      placeholder: type === "wax-call" ? "e.g. Swix TS7 + Rode RX42 base, structure Z1N-36 on A-fleet" : type === "alert" ? "e.g. Snow changing \u2014 retest warm waxes" : "e.g. B1 and B3 running slow on uphills",
+      rows: 2,
+      style: { marginBottom: 8, fontSize: 13 },
+      onKeyDown: (e) => {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend();
+      }
+    }
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "btn",
+      onClick: handleSend,
+      disabled: !text.trim() || sending,
+      style: { width: "100%", fontSize: 14 }
+    },
+    sending ? "Sending\u2026" : "Send to Team"
+  ))));
+}
+function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore, onProducts, syncStatus, online, setVocab, setCatalog, setFleets, messages = [], onSendMessage, onDeleteMessage }) {
   const sorted = [...events].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const [showNewModal, setShowNewModal] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -19928,7 +20392,15 @@ function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore
     },
     /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, lineHeight: 1 } }, "\u229E"),
     " Wax Library & Catalog"
-  )), /* @__PURE__ */ React.createElement(SyncStatusBanner, { syncStatus, online }), /* @__PURE__ */ React.createElement("div", { style: { padding: 16 } }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement(SyncStatusBanner, { syncStatus, online }), /* @__PURE__ */ React.createElement("div", { style: { padding: "0 16px" } }, /* @__PURE__ */ React.createElement(
+    TeamMessagesPanel,
+    {
+      messages,
+      onSend: onSendMessage,
+      onDelete: onDeleteMessage,
+      teamCode
+    }
+  )), /* @__PURE__ */ React.createElement("div", { style: { padding: 16 } }, /* @__PURE__ */ React.createElement(
     GuidanceBanner,
     {
       storageKey: "waxlab:guide:events2",
@@ -20353,6 +20825,7 @@ function App() {
   const [fleets, setFleets] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [structureCatalog, setStructureCatalog] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [view, setView] = useState("home");
   const [activeId, setActiveId] = useState(null);
   const [activeSessionId, setActiveSessionId] = useState(null);
@@ -20392,6 +20865,29 @@ function App() {
     const h = getHashTeam();
     if (h) joinTeam(h);
   }, []);
+  const navDepth = useRef(0);
+  function pushNav2() {
+    navDepth.current += 1;
+    window.history.pushState({ waxlab: navDepth.current }, "");
+  }
+  useEffect(() => {
+    const onPop = (e) => {
+      if (!e.state?.waxlab) return;
+      if (activeTestId) {
+        setActiveTestId(null);
+      } else if (activeSessionId) {
+        setActiveSessionId(null);
+      } else if (view !== "home" && view !== "dashboard") {
+        setView(appMode === "waxroom" ? "dashboard" : "home");
+      } else {
+        window.history.back();
+      }
+      navDepth.current += 1;
+      window.history.pushState({ waxlab: navDepth.current }, "");
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [activeTestId, activeSessionId, view, appMode]);
   function resubscribeTeam(code) {
     if (!db || !code) return;
     if (unsubscribeRef.current) {
@@ -20432,6 +20928,13 @@ function App() {
       (updatedStructCat) => {
         lsSet(`waxlab:structcatalog:${code}`, updatedStructCat);
         setStructureCatalog(updatedStructCat);
+      },
+      (msgEvent) => {
+        setMessages((prev) => {
+          const msgs = msgEvent.type === "delete" ? prev.filter((m) => m.id !== msgEvent.id) : prev.some((m) => m.id === msgEvent.msg?.id) ? prev : [...prev, msgEvent.msg].slice(-50);
+          lsSet(MSG_KEY(code), msgs);
+          return msgs;
+        });
       }
     );
     unsubscribeRef.current = unsub;
@@ -20447,7 +20950,7 @@ function App() {
     setLoading(true);
     setTeamCode(code);
     setView(mode === "waxroom" ? "dashboard" : "home");
-    const [evs, voc, fls, allEvs, cat, structCat] = await Promise.all([loadTeamEvents(code), loadVocab(code), loadFleets(code), loadAllEvents(), loadCatalog(code), loadStructureCatalog(code)]);
+    const [evs, voc, fls, allEvs, cat, structCat, msgs] = await Promise.all([loadTeamEvents(code), loadVocab(code), loadFleets(code), loadAllEvents(), loadCatalog(code), loadStructureCatalog(code), loadMessages(code)]);
     const seedVoc = { ...voc || {} };
     const allCatalogEntries = [...cat || [], ...WAX_SEED_CATALOG];
     allCatalogEntries.forEach((e) => {
@@ -20461,6 +20964,10 @@ function App() {
       seedVoc.structures = [.../* @__PURE__ */ new Set([...seedVoc.structures || [], key])].sort();
     });
     setStructureCatalog(structCat || []);
+    setMessages(msgs || []);
+    loadMessagesFromSupabase(code).then((m) => {
+      if (m?.length) setMessages(m);
+    });
     const remoteSeed = await loadRemoteSeedCatalog();
     const cachedEnr = lsGet(`waxlab:seedEnrichments`) || {};
     const seedBase = remoteSeed.map((e) => {
@@ -20528,6 +21035,13 @@ function App() {
       (updatedStructCat) => {
         lsSet(`waxlab:structcatalog:${code}`, updatedStructCat);
         setStructureCatalog(updatedStructCat);
+      },
+      (msgEvent) => {
+        setMessages((prev) => {
+          const msgs2 = msgEvent.type === "delete" ? prev.filter((m) => m.id !== msgEvent.id) : prev.some((m) => m.id === msgEvent.msg?.id) ? prev : [...prev, msgEvent.msg].slice(-50);
+          lsSet(MSG_KEY(code), msgs2);
+          return msgs2;
+        });
       }
     );
     unsubscribeRef.current = unsub;
@@ -20718,7 +21232,10 @@ function App() {
       onLeave: leaveTeam,
       useCelsius,
       onUnitToggle: toggleUnit,
-      onFleets: () => setView("fleets"),
+      onFleets: () => {
+        pushNav2();
+        setView("fleets");
+      },
       appMode,
       onSwitchMode: appMode === "field" ? () => {
         setAppMode("waxroom");
@@ -20826,7 +21343,10 @@ function App() {
         allEvents: allEventsForPrediction,
         useCelsius,
         onBack: () => setView("home"),
-        onImportHistory: () => setView("import-history"),
+        onImportHistory: () => {
+          pushNav2();
+          setView("import-history");
+        },
         catalog,
         onCatalogSave: async (updated) => {
           setCatalog(updated);
@@ -20903,6 +21423,7 @@ function App() {
         setActiveSessionId(null);
         setActiveTestId(null);
         setActiveId(id);
+        pushNav2();
         setView("event");
       },
       onDelete: doDeleteEvent,
@@ -20913,6 +21434,15 @@ function App() {
       setVocab,
       setCatalog,
       setFleets,
+      messages,
+      onSendMessage: async (msg) => {
+        const updated = await sendMessage(teamCode, msg);
+        setMessages(updated);
+      },
+      onDeleteMessage: async (id) => {
+        const updated = await deleteMessage(teamCode, id);
+        setMessages(updated);
+      },
       syncStatus,
       online
     }

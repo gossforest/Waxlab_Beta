@@ -266,3 +266,32 @@ create policy "Public insert" on waxlab_structure_catalog for insert with check 
 create policy "Public update" on waxlab_structure_catalog for update using (true);
 
 alter publication supabase_realtime add table waxlab_structure_catalog;
+
+
+-- ─── TEAM MESSAGES ───────────────────────────────────────────────────────────
+-- Simple broadcast messages within a team code.
+-- Used for race-day wax call announcements, alerts, and notes pushed to all
+-- connected devices on the same team code.
+--
+-- Each row is one message. No threading — flat broadcast only.
+-- data JSONB shape:
+--   { id, teamCode, text, type, author, createdAt }
+--   type: "wax-call" | "alert" | "note"
+
+create table if not exists waxlab_messages (
+  id          text primary key,
+  team_code   text not null,
+  data        jsonb not null default '{}',
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists waxlab_messages_team_code_idx on waxlab_messages (team_code);
+create index if not exists waxlab_messages_created_at_idx on waxlab_messages (created_at);
+
+alter table waxlab_messages enable row level security;
+
+create policy "Public read"   on waxlab_messages for select using (true);
+create policy "Public insert" on waxlab_messages for insert with check (true);
+create policy "Public delete" on waxlab_messages for delete using (true);
+
+alter publication supabase_realtime add table waxlab_messages;
