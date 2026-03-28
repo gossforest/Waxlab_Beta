@@ -17053,19 +17053,19 @@ function TournamentSkiRow({
   })(), rewaxId === ski.id && /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--rule)", padding: "12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--blue)", marginBottom: 10 } }, "Re-wax ", ski.id), /* @__PURE__ */ React.createElement(
     ACI,
     {
-      label: "New Product",
+      label: test.type === "Hand structure" ? "New Structure Tool" : test.category === "kick" ? "New Kick Wax" : "New Glide Wax",
       value: rewaxProduct,
       onChange: (v) => {
         setRewaxProduct(v);
         const f = lookupProductForm2(v);
         if (f) setRewaxForm(f);
       },
-      onCommit: (v) => onVocabAdd?.("products", [v]),
-      suggestions: vocab?.products || [],
-      placeholder: "New wax product\u2026",
+      onCommit: (v) => onVocabAdd?.(test.type === "Hand structure" ? "structures" : "products", [v]),
+      suggestions: test.type === "Hand structure" ? vocab?.structures || [] : vocab?.products || [],
+      placeholder: test.type === "Hand structure" ? "e.g. Speedy Z1N-36\u2026" : test.category === "kick" ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026",
       style: { marginBottom: 6 }
     }
-  ), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category: test.category, value: rewaxForm, onChange: setRewaxForm })), /* @__PURE__ */ React.createElement(
+  ), test.type !== "Hand structure" && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category: test.category, value: rewaxForm, onChange: setRewaxForm })), /* @__PURE__ */ React.createElement(
     ACI,
     {
       label: "Application",
@@ -18662,7 +18662,8 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       onPhotoSave: updatePhotos,
       teamCode,
       eventId,
-      category: test.category
+      category: test.category,
+      testType: test.type || ""
     }
   ) : rewaxId === ski.id ? /* @__PURE__ */ React.createElement("div", { key: ski.id, className: "card", style: {
     padding: 14,
@@ -18671,18 +18672,19 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
   } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--blue)", marginBottom: 8 } }, "Rewax ", ski.id), /* @__PURE__ */ React.createElement(
     ACI,
     {
-      label: test.type === "Hand structure" ? "Structure Tool" : "New Product",
+      label: test.type === "Hand structure" ? "Structure Tool" : test.category === "kick" ? "New Kick Wax" : "New Glide Wax",
       value: rewaxProduct,
       onChange: (v) => {
         setRewaxProduct(v);
         const f = lookupProductForm(v);
         if (f) setRewaxForm(f);
       },
+      onCommit: (v) => onVocabAdd?.(test.type === "Hand structure" ? "structures" : "products", [v]),
       suggestions: test.type === "Hand structure" ? vocab?.structures || [] : vocab?.products || [],
-      placeholder: test.type === "Hand structure" ? "e.g. Speedy Z1N-36\u2026" : "New wax product\u2026",
+      placeholder: test.type === "Hand structure" ? "e.g. Speedy Z1N-36\u2026" : test.category === "kick" ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026",
       style: { marginBottom: 6 }
     }
-  ), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category: test.category, value: rewaxForm, onChange: setRewaxForm })), /* @__PURE__ */ React.createElement(
+  ), test.type !== "Hand structure" && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category: test.category, value: rewaxForm, onChange: setRewaxForm })), /* @__PURE__ */ React.createElement(
     ACI,
     {
       label: "Application",
@@ -18827,33 +18829,47 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       placeholder: `or type custom (e.g. ${nextSkiId(test.skis)})`,
       style: { fontSize: 15, letterSpacing: "0.06em" }
     }
-  )), /* @__PURE__ */ React.createElement(
-    ACI,
-    {
-      label: "Product",
-      value: newProduct,
-      onChange: (v) => {
-        setNewProduct(v);
-        const f = lookupProductForm(v);
-        if (f) setNewForm(f);
-      },
-      onCommit: (v) => onVocabAdd?.("products", [v]),
-      suggestions: test?.type === "Hand structure" ? vocab?.structures || [] : vocab?.products || [],
-      placeholder: test?.type === "Hand structure" ? "e.g. Speedy Z1N-36\u2026" : "Wax product\u2026",
-      style: { marginBottom: 6 }
-    }
-  ), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category: test.category, value: newForm, onChange: setNewForm })), /* @__PURE__ */ React.createElement(
-    ACI,
-    {
-      label: "Application",
-      value: newApp,
-      onChange: setNewApp,
-      onCommit: (v) => onVocabAdd?.("applications", [v]),
-      suggestions: vocab?.applications || [],
-      placeholder: "Iron temp, layers\u2026",
-      style: { marginBottom: 8 }
-    }
-  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: addSki, style: { flex: 1 } }, "Add to Fleet"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", onClick: addSki, style: { flex: 1 } }, "Add Another")))), tab === "setup" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Category"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.category || "glide", onChange: (e) => upd({ category: e.target.value, type: "" }) }, /* @__PURE__ */ React.createElement("option", { value: "glide" }, "Glide"), /* @__PURE__ */ React.createElement("option", { value: "kick" }, "Kick"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Test Type"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.type || "", onChange: (e) => upd({ type: e.target.value }) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), (test.category === "glide" || test.category === "glide-out" ? ["Topcoat", "Paraffin", "Hand structure", "Grind"] : test.category === "kick" ? ["Binder", "Mid layer", "Top layer", "Full stack"] : []).map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o))))), /* @__PURE__ */ React.createElement(TI, { label: "Test Name", value: test.name, onChange: (v) => upd({ name: v }), style: { marginBottom: 8 }, mic: true }), (() => {
+  )), (() => {
+    const isStruct = test.type === "Hand structure";
+    const isKick = test.category === "kick";
+    const productLabel = isStruct ? "Structure Tool" : isKick ? "Kick Wax" : "Glide Wax";
+    const productPlaceholder = isStruct ? "e.g. Speedy Z1N-36\u2026" : isKick ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026";
+    const productSuggestions = isStruct ? vocab?.structures || [] : isKick ? (vocab?.products || []).filter((p) => {
+      const lp = p.toLowerCase();
+      return lp.includes("kick") || lp.includes("klister") || lp.includes("binder") || lp.includes("blue") || lp.includes("violet") || lp.includes("green kick") || lp.includes("oslo") || lp.includes("vario") || lp.includes("multigrade") || lp.includes("b310") || lp.includes("b17") || lp.includes("weiss") || lp.includes("rossa") || lp.includes("v30") || lp.includes("v40") || lp.includes("v50") || lp.includes("vp") || lp.includes("guru") || (vocab?.products || []).length < 30;
+    }) : (vocab?.products || []).filter((p) => {
+      const lp = p.toLowerCase();
+      return !lp.includes(" kick") && !lp.includes("klister") && !lp.includes("binder") && !lp.match(/\bvp\d\d\b/);
+    });
+    const appPlaceholder = isStruct ? "e.g. 3 passes tip-to-tail" : "Iron temp, layers\u2026";
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+      ACI,
+      {
+        label: productLabel,
+        value: newProduct,
+        onChange: (v) => {
+          setNewProduct(v);
+          const f = lookupProductForm(v);
+          if (f) setNewForm(f);
+        },
+        onCommit: (v) => onVocabAdd?.(isStruct ? "structures" : "products", [v]),
+        suggestions: productSuggestions,
+        placeholder: productPlaceholder,
+        style: { marginBottom: 6 }
+      }
+    ), !isStruct && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category: test.category, value: newForm, onChange: setNewForm })), /* @__PURE__ */ React.createElement(
+      ACI,
+      {
+        label: "Application",
+        value: newApp,
+        onChange: setNewApp,
+        onCommit: (v) => onVocabAdd?.("applications", [v]),
+        suggestions: vocab?.applications || [],
+        placeholder: appPlaceholder,
+        style: { marginBottom: 8 }
+      }
+    ));
+  })(), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: addSki, style: { flex: 1 } }, "Add to Fleet"), /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", onClick: addSki, style: { flex: 1 } }, "Add Another")))), tab === "setup" && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Category"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.category || "glide", onChange: (e) => upd({ category: e.target.value, type: "" }) }, /* @__PURE__ */ React.createElement("option", { value: "glide" }, "Glide"), /* @__PURE__ */ React.createElement("option", { value: "kick" }, "Kick"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Lbl, null, "Test Type"), /* @__PURE__ */ React.createElement("select", { className: "inp", value: test.type || "", onChange: (e) => upd({ type: e.target.value }) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014 select \u2014"), (test.category === "glide" || test.category === "glide-out" ? ["Topcoat", "Paraffin", "Hand structure", "Grind"] : test.category === "kick" ? ["Binder", "Mid layer", "Top layer", "Full stack"] : []).map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o))))), /* @__PURE__ */ React.createElement(TI, { label: "Test Name", value: test.name, onChange: (v) => upd({ name: v }), style: { marginBottom: 8 }, mic: true }), (() => {
     const testers = Array.isArray(test.testers) ? test.testers : [];
     return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Testers"), testers.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 } }, testers.map((r) => /* @__PURE__ */ React.createElement("div", { key: r, style: {
       display: "flex",
@@ -19036,13 +19052,18 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
     }
   )));
 }
-function SkiEditInline({ ski, vocab, onSave, onCancel, onPhotoSave, teamCode, eventId, category = "glide" }) {
+function SkiEditInline({ ski, vocab, onSave, onCancel, onPhotoSave, teamCode, eventId, category = "glide", testType = "" }) {
   const [product, setProduct] = useState(ski.product || "");
   const [application, setApplication] = useState(ski.application || "");
   const [waxForm, setWaxForm] = useState(ski.waxForm || lookupProductForm(ski.product) || "");
   const [notes, setNotes] = useState(ski.notes || "");
   const [feelNotes, setFeelNotes] = useState(ski.feelNotes || "");
   const [showPhotos, setShowPhotos] = useState(false);
+  const isStruct = testType === "Hand structure";
+  const isKick = category === "kick";
+  const productLabel = isStruct ? "Structure Tool" : isKick ? "Kick Wax" : "Glide Wax";
+  const productPlaceholder = isStruct ? "e.g. Speedy Z1N-36\u2026" : isKick ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026";
+  const productSuggestions = isStruct ? vocab?.structures || [] : vocab?.products || [];
   return /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 14, marginBottom: 6, border: "2px solid var(--ink)" } }, showPhotos && onPhotoSave && /* @__PURE__ */ React.createElement(
     PhotoSheet,
     {
@@ -19055,16 +19076,28 @@ function SkiEditInline({ ski, vocab, onSave, onCancel, onPhotoSave, teamCode, ev
   ), /* @__PURE__ */ React.createElement(
     ACI,
     {
-      label: "Product",
+      label: productLabel,
       value: product,
       onChange: (v) => {
         setProduct(v);
         const f = lookupProductForm(v);
         if (f) setWaxForm(f);
       },
-      suggestions: vocab?.products || []
+      onCommit: (v) => {
+      },
+      suggestions: productSuggestions,
+      placeholder: productPlaceholder
     }
-  ), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category, value: waxForm, onChange: setWaxForm })), /* @__PURE__ */ React.createElement(ACI, { label: "Application", value: application, onChange: setApplication, suggestions: vocab?.applications || [] }), /* @__PURE__ */ React.createElement(TA, { label: "Notes", value: notes, onChange: setNotes, rows: 2, mic: true }), /* @__PURE__ */ React.createElement(TA, { label: "Feel Notes", value: feelNotes, onChange: setFeelNotes, rows: 2, mic: true }), ski.photos?.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Photos (", ski.photos.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, ski.photos.map((p) => /* @__PURE__ */ React.createElement(
+  ), !isStruct && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 4 } }, "Form"), /* @__PURE__ */ React.createElement(WaxFormPicker, { category, value: waxForm, onChange: setWaxForm })), /* @__PURE__ */ React.createElement(
+    ACI,
+    {
+      label: "Application",
+      value: application,
+      onChange: setApplication,
+      suggestions: vocab?.applications || [],
+      placeholder: isStruct ? "e.g. 3 passes tip-to-tail" : "Iron temp, layers\u2026"
+    }
+  ), /* @__PURE__ */ React.createElement(TA, { label: "Notes", value: notes, onChange: setNotes, rows: 2, mic: true }), /* @__PURE__ */ React.createElement(TA, { label: "Feel Notes", value: feelNotes, onChange: setFeelNotes, rows: 2, mic: true }), ski.photos?.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Photos (", ski.photos.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, ski.photos.map((p) => /* @__PURE__ */ React.createElement(
     "img",
     {
       key: p.id,
@@ -19075,7 +19108,7 @@ function SkiEditInline({ ski, vocab, onSave, onCancel, onPhotoSave, teamCode, ev
     }
   )))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: () => {
     if (product && waxForm) rememberProductForm(product, waxForm);
-    onSave({ product, application, waxForm: waxForm || void 0, notes, feelNotes });
+    onSave({ product, application, waxForm: isStruct ? "" : waxForm || void 0, notes, feelNotes });
   } }, "Save"), /* @__PURE__ */ React.createElement(
     "button",
     {
