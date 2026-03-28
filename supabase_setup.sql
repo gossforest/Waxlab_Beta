@@ -295,3 +295,23 @@ create policy "Public insert" on waxlab_messages for insert with check (true);
 create policy "Public delete" on waxlab_messages for delete using (true);
 
 alter publication supabase_realtime add table waxlab_messages;
+
+
+-- ─── GLOBAL STRUCTURE SEED CATALOG ───────────────────────────────────────────
+-- Admin-managed global hand structure tool catalog.
+-- Falls back to compiled STRUCTURE_CATALOG constant when offline.
+
+create table if not exists waxlab_seed_structure_catalog (
+  seed_id     text primary key,
+  data        jsonb not null default '{}',
+  updated_at  timestamptz not null default now()
+);
+
+alter table waxlab_seed_structure_catalog enable row level security;
+
+create policy "Public read"   on waxlab_seed_structure_catalog for select using (true);
+create policy "Public insert" on waxlab_seed_structure_catalog for insert with check (true);
+create policy "Public update" on waxlab_seed_structure_catalog for update using (true);
+create policy "Public delete" on waxlab_seed_structure_catalog for delete using (true);
+
+alter publication supabase_realtime add table waxlab_seed_structure_catalog;

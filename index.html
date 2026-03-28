@@ -759,6 +759,41 @@ async function deleteRemoteSeedEntry(seedId) {
   const { error } = await db.from("waxlab_seed_catalog").delete().eq("seed_id", seedId);
   if (error) throw error;
 }
+const REMOTE_STRUCT_SEED_KEY = "waxlab:seedStructureCatalog";
+async function loadRemoteSeedStructureCatalog() {
+  if (db) {
+    try {
+      const { data, error } = await db.from("waxlab_seed_structure_catalog").select("seed_id,data").order("seed_id");
+      if (!error && data?.length > 0) {
+        const entries = data.map((r) => ({ ...r.data, seed_id: r.seed_id, _seed: true }));
+        lsSet(REMOTE_STRUCT_SEED_KEY, entries);
+        return entries;
+      }
+    } catch (e) {
+      console.warn("loadRemoteSeedStructureCatalog:", e.message);
+    }
+  }
+  const cached = lsGet(REMOTE_STRUCT_SEED_KEY);
+  if (cached?.length > 0) return cached;
+  return STRUCTURE_CATALOG;
+}
+async function saveRemoteSeedStructureEntry(entry) {
+  if (!db) throw new Error("Supabase not connected");
+  const seedId = entry.id || entry.seed_id || `struct-${Date.now()}`;
+  const { _seed, seed_id, ...data } = entry;
+  data.id = seedId;
+  const { error } = await db.from("waxlab_seed_structure_catalog").upsert(
+    { seed_id: seedId, data, updated_at: (/* @__PURE__ */ new Date()).toISOString() },
+    { onConflict: "seed_id" }
+  );
+  if (error) throw error;
+  return { ...entry, seed_id: seedId };
+}
+async function deleteRemoteSeedStructureEntry(seedId) {
+  if (!db) throw new Error("Supabase not connected");
+  const { error } = await db.from("waxlab_seed_structure_catalog").delete().eq("seed_id", seedId);
+  if (error) throw error;
+}
 async function getActiveSeedCatalog() {
   return loadRemoteSeedCatalog();
 }
@@ -22676,7 +22711,8 @@ function AdminDashboard({ onLeave, darkMode, onToggleDark }) {
     { id: "events", label: "Events" },
     { id: "usage", label: "Usage" },
     { id: "devices", label: "Devices" },
-    { id: "catalog", label: "Wax Catalog" }
+    { id: "catalog", label: "Wax Catalog" },
+    { id: "structure", label: "Structure Tools" }
   ];
   function Stat({ label, value, sub, color }) {
     return /* @__PURE__ */ React.createElement("div", { style: {
@@ -23038,7 +23074,7 @@ function AdminDashboard({ onLeave, darkMode, onToggleDark }) {
       marginTop: 8,
       color: pingMsg.startsWith("\u2713") ? C.green : pingMsg.startsWith("\u2717") ? C.red : C.faint
     } }, pingMsg), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.faint, marginTop: 10, lineHeight: 1.5 } }, "If the test ping succeeds but other devices aren't showing up, those devices joined before analytics was deployed and haven't fired a ping yet \u2014 they'll appear automatically on their next team join."));
-  })()), tab === "catalog" && /* @__PURE__ */ React.createElement(AdminSeedCatalog, { C })));
+  })()), tab === "catalog" && /* @__PURE__ */ React.createElement(AdminSeedCatalog, { C }), tab === "structure" && /* @__PURE__ */ React.createElement(AdminStructureCatalog, { C })));
 }
 function WaxRoomEventPicker({ events, onSelect, onNew, onDelete, teamCode, onSwitchMode }) {
   const [confirmId, setConfirmId] = useState(null);
@@ -25697,6 +25733,278 @@ Only include actual wax products \u2014 skip tools, accessories, brushes, irons.
       "\xD7"
     )))));
   }), filtered.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.faint, fontSize: 13 } }, "No products match your search.")));
+}
+function AdminStructureCatalog({ C }) {
+  const [entries, setEntries] = useState(null);
+  const [err, setErr] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [search, setSearch] = useState("");
+  const [brandFilter, setBrand] = useState("all");
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
+  useEffect(() => {
+    loadEntries();
+  }, []);
+  const mono = { fontFamily: "'IBM Plex Mono','SF Mono',monospace" };
+  const inp = (extra = {}) => ({
+    background: C.card,
+    border: `1px solid ${C.border}`,
+    borderRadius: 6,
+    padding: "8px 10px",
+    fontSize: 13,
+    color: C.ink,
+    width: "100%",
+    outline: "none",
+    fontFamily: "inherit",
+    ...extra
+  });
+  const btn = (col = C.accent) => ({
+    background: col,
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    padding: "8px 16px",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer"
+  });
+  const btnGhost = () => ({
+    background: "transparent",
+    color: C.ink,
+    border: `1px solid ${C.border}`,
+    borderRadius: 6,
+    padding: "8px 16px",
+    fontSize: 12,
+    cursor: "pointer"
+  });
+  async function loadEntries() {
+    setErr(null);
+    try {
+      const remote = await loadRemoteSeedStructureCatalog();
+      setEntries(remote);
+    } catch (e) {
+      setErr(e.message);
+      setEntries(STRUCTURE_CATALOG);
+    }
+  }
+  function flash(m) {
+    setMsg(m);
+    setTimeout(() => setMsg(null), 3e3);
+  }
+  const brands = entries ? [...new Set(entries.map((e) => e.brand).filter(Boolean))].sort() : [];
+  const filtered = (entries || []).filter((e) => brandFilter === "all" || e.brand === brandFilter).filter((e) => !search || e.product?.toLowerCase().includes(search.toLowerCase()) || e.brand?.toLowerCase().includes(search.toLowerCase()) || e.patternType?.toLowerCase().includes(search.toLowerCase()));
+  function startEdit(entry) {
+    setEditing(entry.id || entry.seed_id);
+    setDraft({ ...entry });
+  }
+  function startNew() {
+    const blank = {
+      id: `struct-${Date.now()}`,
+      brand: "",
+      product: "",
+      patternType: "linear",
+      tempMinC: null,
+      tempMaxC: null,
+      snowTypes: [],
+      notes: "",
+      _seed: true,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    setEditing("new");
+    setDraft(blank);
+  }
+  function cancelEdit() {
+    setEditing(null);
+    setDraft(null);
+  }
+  async function commitEdit() {
+    if (!draft?.product?.trim()) return;
+    setSaving(true);
+    try {
+      await saveRemoteSeedStructureEntry(draft);
+      const updated = await loadRemoteSeedStructureCatalog();
+      setEntries(updated);
+      setEditing(null);
+      setDraft(null);
+      flash("\u2713 Saved");
+    } catch (e) {
+      flash("\u2717 " + e.message);
+    }
+    setSaving(false);
+  }
+  async function doDelete(id) {
+    setSaving(true);
+    try {
+      await deleteRemoteSeedStructureEntry(id);
+      const updated = await loadRemoteSeedStructureCatalog();
+      setEntries(updated);
+      setConfirmDel(null);
+      flash("\u2713 Deleted");
+    } catch (e) {
+      flash("\u2717 " + e.message);
+    }
+    setSaving(false);
+  }
+  const Field = ({ label, value, onChange, type = "text", options }) => /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: C.faint,
+    marginBottom: 3
+  } }, label), options ? /* @__PURE__ */ React.createElement("select", { value: value || "", onChange: (e) => onChange(e.target.value), style: inp() }, options.map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o || "\u2014"))) : /* @__PURE__ */ React.createElement("input", { type, value: value ?? "", onChange: (e) => onChange(e.target.value), style: inp() }));
+  const PATTERN_TYPES = [
+    "",
+    "linear",
+    "cross",
+    "diagonal",
+    "chevron",
+    "universal",
+    "fine-linear",
+    "coarse-linear",
+    "hairy",
+    "zigzag",
+    "new-snow",
+    "warm-wet",
+    "cold-dry",
+    "race-service",
+    "special"
+  ];
+  return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 4px" } }, /* @__PURE__ */ React.createElement("div", { style: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20
+  } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800 } }, "Structure Tool Catalog"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.faint, marginTop: 2 } }, entries ? `${entries.length} tools` : "Loading\u2026", " \xB7 shared across all teams")), /* @__PURE__ */ React.createElement("button", { onClick: startNew, style: btn() }, "+ Add Tool")), err && /* @__PURE__ */ React.createElement("div", { style: {
+    background: "#fee",
+    border: "1px solid #f88",
+    borderRadius: 8,
+    padding: "10px 14px",
+    marginBottom: 16,
+    fontSize: 13,
+    color: "#c00"
+  } }, err), msg && /* @__PURE__ */ React.createElement("div", { style: {
+    background: "#efe",
+    border: "1px solid #8c8",
+    borderRadius: 8,
+    padding: "10px 14px",
+    marginBottom: 16,
+    fontSize: 13,
+    color: "#060",
+    ...mono
+  } }, msg), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: search,
+      onChange: (e) => setSearch(e.target.value),
+      placeholder: "Search tools\u2026",
+      style: { ...inp(), width: 180, flex: "0 0 180px" }
+    }
+  ), /* @__PURE__ */ React.createElement("select", { value: brandFilter, onChange: (e) => setBrand(e.target.value), style: inp({ width: 140, flex: "0 0 140px" }) }, /* @__PURE__ */ React.createElement("option", { value: "all" }, "All brands"), brands.map((b) => /* @__PURE__ */ React.createElement("option", { key: b, value: b }, b))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, alignSelf: "center" } }, filtered.length, " of ", (entries || []).length)), editing && draft && /* @__PURE__ */ React.createElement("div", { style: {
+    background: C.card,
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20
+  } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 16 } }, editing === "new" ? "New Structure Tool" : "Edit Tool"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 } }, /* @__PURE__ */ React.createElement(
+    Field,
+    {
+      label: "Brand",
+      value: draft.brand,
+      onChange: (v) => setDraft((d) => ({ ...d, brand: v }))
+    }
+  ), /* @__PURE__ */ React.createElement(
+    Field,
+    {
+      label: "Product Name",
+      value: draft.product,
+      onChange: (v) => setDraft((d) => ({ ...d, product: v }))
+    }
+  ), /* @__PURE__ */ React.createElement(
+    Field,
+    {
+      label: "Pattern Type",
+      value: draft.patternType,
+      options: PATTERN_TYPES,
+      onChange: (v) => setDraft((d) => ({ ...d, patternType: v }))
+    }
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, gridColumn: "1/-1" } }, /* @__PURE__ */ React.createElement(
+    Field,
+    {
+      label: "Temp Min \xB0C",
+      type: "number",
+      value: draft.tempMinC ?? "",
+      onChange: (v) => setDraft((d) => ({ ...d, tempMinC: v === "" ? null : Number(v) }))
+    }
+  ), /* @__PURE__ */ React.createElement(
+    Field,
+    {
+      label: "Temp Max \xB0C",
+      type: "number",
+      value: draft.tempMaxC ?? "",
+      onChange: (v) => setDraft((d) => ({ ...d, tempMaxC: v === "" ? null : Number(v) }))
+    }
+  )), /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "1/-1" } }, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: C.faint,
+    marginBottom: 3
+  } }, "Snow Types (comma separated)"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      value: (draft.snowTypes || []).join(", "),
+      onChange: (e) => setDraft((d) => ({ ...d, snowTypes: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })),
+      placeholder: "e.g. new, transformed, artificial",
+      style: inp()
+    }
+  )), /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "1/-1" } }, /* @__PURE__ */ React.createElement(
+    Field,
+    {
+      label: "Notes / Description",
+      value: draft.notes || "",
+      onChange: (v) => setDraft((d) => ({ ...d, notes: v }))
+    }
+  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 16 } }, /* @__PURE__ */ React.createElement("button", { onClick: commitEdit, disabled: saving || !draft.product?.trim(), style: btn() }, saving ? "Saving\u2026" : "Save Tool"), /* @__PURE__ */ React.createElement("button", { onClick: cancelEdit, style: btnGhost() }, "Cancel"))), entries === null ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "40px 0", color: C.faint } }, "Loading\u2026") : /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { borderBottom: `2px solid ${C.border}` } }, ["Brand", "Product", "Pattern", "Temp Range", "Snow Types", ""].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, style: {
+    textAlign: "left",
+    padding: "8px 10px",
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: C.faint,
+    ...mono
+  } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, filtered.map((e) => {
+    const isEditing = editing === (e.id || e.seed_id);
+    const tempRange = e.tempMinC != null || e.tempMaxC != null ? `${e.tempMinC ?? "?"}\u2013${e.tempMaxC ?? "?"}\xB0C` : "\u2014";
+    return /* @__PURE__ */ React.createElement(
+      "tr",
+      {
+        key: e.id || e.seed_id,
+        style: {
+          borderBottom: `1px solid ${C.border}`,
+          background: isEditing ? `${C.accent}08` : "transparent"
+        }
+      },
+      /* @__PURE__ */ React.createElement("td", { style: { padding: "9px 10px", fontWeight: 600, ...mono, fontSize: 12 } }, e.brand || "\u2014"),
+      /* @__PURE__ */ React.createElement("td", { style: { padding: "9px 10px", fontWeight: 700 } }, e.product),
+      /* @__PURE__ */ React.createElement("td", { style: { padding: "9px 10px", ...mono, fontSize: 11, color: C.faint } }, e.patternType || "\u2014"),
+      /* @__PURE__ */ React.createElement("td", { style: { padding: "9px 10px", ...mono, fontSize: 11 } }, tempRange),
+      /* @__PURE__ */ React.createElement("td", { style: { padding: "9px 10px", fontSize: 11, color: C.faint } }, (e.snowTypes || []).join(", ") || "\u2014"),
+      /* @__PURE__ */ React.createElement("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, confirmDel === (e.id || e.seed_id) ? /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "#c00", marginRight: 8 } }, "Delete?"), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => doDelete(e.id || e.seed_id),
+          disabled: saving,
+          style: { ...btn("#c00"), padding: "4px 10px", fontSize: 11, marginRight: 4 }
+        },
+        "Yes"
+      ), /* @__PURE__ */ React.createElement("button", { onClick: () => setConfirmDel(null), style: { ...btnGhost(), padding: "4px 10px", fontSize: 11 } }, "No")) : /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("button", { onClick: () => startEdit(e), style: { ...btnGhost(), padding: "4px 10px", fontSize: 11, marginRight: 4 } }, "Edit"), /* @__PURE__ */ React.createElement("button", { onClick: () => setConfirmDel(e.id || e.seed_id), style: { background: "none", border: "none", color: "#c00", cursor: "pointer", fontSize: 16, padding: "0 4px" } }, "\xD7")))
+    );
+  }))), filtered.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "32px 0", color: C.faint, fontSize: 13 } }, "No tools match your search.")));
 }
 
 </script>
