@@ -21406,6 +21406,18 @@ function App() {
         useCelsius,
         onUnitToggle: toggleUnit,
         teamCode,
+        catalog,
+        structureCatalog,
+        allEvents: allEventsForPrediction,
+        messages,
+        onSendMessage: async (msg) => {
+          const updated = await sendMessage(teamCode, msg);
+          setMessages(updated);
+        },
+        onDeleteMessage: async (id) => {
+          const updated = await deleteMessage(teamCode, id);
+          setMessages(updated);
+        },
         onBack: () => setActiveId(null),
         onSwitchToField: () => {
           setAppMode("field");
@@ -23172,13 +23184,20 @@ function WaxRoomDashboard({
   onUnitToggle,
   teamCode,
   onBack,
-  onSwitchToField
+  onSwitchToField,
+  catalog = [],
+  structureCatalog = [],
+  allEvents = [],
+  messages = [],
+  onSendMessage,
+  onDeleteMessage
 }) {
   const [panel, setPanel] = useState(null);
   const [selectedTest, setSelTest] = useState(null);
   const [expandedSess, setExpSess] = useState(null);
   const [mobileTab, setMobileTab] = useState("overview");
   const [bracketOpen, setBracketOpen] = useState(false);
+  const [overviewTab, setOverviewTab] = useState("live");
   const [ntSessId, setNtSessId] = useState("");
   const [ntNewSess, setNtNewSess] = useState("");
   const [ntCat, setNtCat] = useState("glide");
@@ -23296,7 +23315,7 @@ function WaxRoomDashboard({
       return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
     };
     const raceTimes = event.raceTimes || [];
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(ColHead, { action: /* @__PURE__ */ React.createElement(SmallBtn, { onClick: () => openNewTest() }, "+ Test") }, "Schedule"), raceTimes.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, raceTimes.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(ColHead, { action: /* @__PURE__ */ React.createElement(SmallBtn, { onClick: () => openNewTest() }, "+ Test") }, "Race Day"), raceTimes.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, raceTimes.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
@@ -23306,63 +23325,49 @@ function WaxRoomDashboard({
       borderLeft: `3px solid ${C.ink}`,
       borderRadius: 6,
       marginBottom: 5
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(FlagIcon, { size: 12, color: C.ink }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700 } }, r.label || "Race")), /* @__PURE__ */ React.createElement("span", { style: {
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace",
-      fontSize: 12,
-      fontWeight: 700,
-      color: C.ink
-    } }, fmtT(r.raceTime))))), openWindows.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement(FlagIcon, { size: 12, color: C.ink }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 700 } }, r.label || "Race")), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: C.mono, fontSize: 12, fontWeight: 700 } }, fmtT(r.raceTime))))), openWindows.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 9,
       fontWeight: 700,
       color: C.green,
       letterSpacing: "0.1em",
       textTransform: "uppercase",
       marginBottom: 6,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace"
+      fontFamily: C.mono
     } }, "Open now"), openWindows.map((w) => /* @__PURE__ */ React.createElement("div", { key: w.id, style: {
       padding: "8px 10px",
       background: `${C.green}12`,
       border: `1px solid ${C.green}`,
       borderRadius: 6,
       marginBottom: 5
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 700 } }, w.label || "Testing window"), w.windowClose && /* @__PURE__ */ React.createElement("span", { style: {
-      fontSize: 10,
-      color: C.green,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace"
-    } }, "closes ", minsUntil(w.windowClose))), w.resultBy && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.amber, marginTop: 3 } }, "Result needed ", minsUntil(w.resultBy))))), urgentWindows.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 700 } }, w.label || "Testing window"), w.windowClose && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.green, fontFamily: C.mono } }, "closes ", minsUntil(w.windowClose))), w.resultBy && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.amber, marginTop: 3 } }, "Result needed ", minsUntil(w.resultBy))))), urgentWindows.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 9,
       fontWeight: 700,
       color: C.amber,
       letterSpacing: "0.1em",
       textTransform: "uppercase",
       marginBottom: 6,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace"
+      fontFamily: C.mono
     } }, "Deadline soon"), urgentWindows.map((w) => /* @__PURE__ */ React.createElement("div", { key: w.id, style: {
       padding: "8px 10px",
       background: `${C.amber}12`,
       border: `1px solid ${C.amber}`,
       borderRadius: 6,
       marginBottom: 5
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 700 } }, w.label), /* @__PURE__ */ React.createElement("span", { style: {
-      fontSize: 11,
-      color: C.amber,
-      fontWeight: 700,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace"
-    } }, minsUntil(w.resultBy)))))), upcomingWindows.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 700 } }, w.label), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: C.amber, fontWeight: 700, fontFamily: C.mono } }, minsUntil(w.resultBy)))))), upcomingWindows.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 9,
       fontWeight: 700,
       color: C.faint,
       letterSpacing: "0.1em",
       textTransform: "uppercase",
       marginBottom: 6,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace"
+      fontFamily: C.mono
     } }, "Coming up"), upcomingWindows.map((w) => /* @__PURE__ */ React.createElement("div", { key: w.id, style: {
       padding: "7px 10px",
       background: C.surface,
       border: `1px solid ${C.rule}`,
       borderRadius: 6,
       marginBottom: 5
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.mid } }, w.label), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.faint, fontFamily: "'IBM Plex Mono','SF Mono',monospace" } }, fmtT(w.windowStart)))))), schedule.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, fontStyle: "italic", padding: "8px 0" } }, "No schedule \u2014 build one in the event Schedule tab."), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ React.createElement(ColHead, { action: /* @__PURE__ */ React.createElement(SmallBtn, { onClick: () => setPanel("fleet") }, "+ Fleet") }, "Sessions"), (event.sessions || []).length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, fontStyle: "italic" } }, "No sessions yet."), (event.sessions || []).map((sess) => {
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: C.mid } }, w.label), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.faint, fontFamily: C.mono } }, fmtT(w.windowStart)))))), raceTimes.length === 0 && openWindows.length === 0 && urgentWindows.length === 0 && upcomingWindows.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, fontStyle: "italic", padding: "8px 0" } }, "No schedule yet. Use the Setup tab \u2192 Schedule to build your race day plan."), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ React.createElement(ColHead, { action: /* @__PURE__ */ React.createElement(SmallBtn, { onClick: () => setPanel("fleet") }, "Fleets") }, "Sessions"), (event.sessions || []).length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, fontStyle: "italic" } }, "No sessions yet."), (event.sessions || []).map((sess) => {
       const tests = sess.tests || [];
       const live = tests.filter((t) => !t.skis?.find((s) => s.standing === "Winner") && (t.skis || []).some((s) => s.standing === "Active")).length;
       const done = tests.filter((t) => t.skis?.find((s) => s.standing === "Winner")).length;
@@ -23422,7 +23427,7 @@ function WaxRoomDashboard({
               }
             },
             /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: C.mid } }, t.name),
-            win ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.green, fontFamily: "'IBM Plex Mono','SF Mono',monospace" } }, win.product || win.id) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: active ? C.amber : C.faint, fontFamily: "'IBM Plex Mono','SF Mono',monospace" } }, active > 0 ? `${active} active` : "empty")
+            win ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.green, fontFamily: C.mono } }, win.product || win.id) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: active ? C.amber : C.faint, fontFamily: C.mono } }, active > 0 ? `${active} active` : "empty")
           );
         }))
       );
@@ -23556,9 +23561,324 @@ function WaxRoomDashboard({
       )));
     })));
   };
+  const OVERVIEW_TABS = [
+    { id: "live", label: "Live" },
+    { id: "setup", label: "Setup" },
+    { id: "raceday", label: "Race Day" },
+    { id: "trend", label: "Trend" },
+    { id: "compare", label: "Compare" },
+    { id: "export", label: "Export" }
+  ];
   const CentreCol = ({ onSelect }) => {
     const sel = onSelect || ((sId, tId) => setSelTest({ sessId: sId, testId: tId }));
-    return /* @__PURE__ */ React.createElement("div", null, liveTests.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ React.createElement(ColHead, null, /* @__PURE__ */ React.createElement("span", { style: { color: C.green } }, "\u25CF "), "Live Tests (", liveTests.length, ")"), liveTests.map((t) => {
+    const SetupTab = () => {
+      const [evName, setEvName] = useState(event.name || "");
+      const [evRace, setEvRace] = useState(event.raceName || "");
+      const [evLoc, setEvLoc] = useState(event.location || "");
+      const [evDate, setEvDate] = useState(event.date || "");
+      const [evSaved, setEvSaved] = useState(false);
+      const [editSessId, setEditSessId] = useState(null);
+      const [newSessName, setNewSessName] = useState("");
+      function saveEventDetails() {
+        upd({
+          name: evName.trim() || event.name,
+          raceName: evRace.trim(),
+          location: evLoc.trim(),
+          date: evDate
+        });
+        setEvSaved(true);
+        setTimeout(() => setEvSaved(false), 1800);
+      }
+      function addSession() {
+        const name = newSessName.trim() || `Session ${(event.sessions || []).length + 1}`;
+        const s = {
+          id: uid(),
+          name,
+          tests: [],
+          snowTemps: [],
+          airTemps: [],
+          createdAt: nowStr(),
+          startedAt: nowStr()
+        };
+        upd({ sessions: [...event.sessions || [], s] });
+        setNewSessName("");
+      }
+      function renameSession(sessId, name) {
+        upd({ sessions: (event.sessions || []).map((s) => s.id === sessId ? { ...s, name } : s) });
+      }
+      function deleteSession(sessId) {
+        upd({ sessions: (event.sessions || []).filter((s) => s.id !== sessId) });
+      }
+      const schedule2 = event.schedule || [];
+      const unactivated = schedule2.filter((w) => !w.activated);
+      function activateWaxRoomSchedule() {
+        if (!unactivated.length) return;
+        const newSessions = unactivated.map((w) => {
+          const entries = resolveTestEntries(w);
+          const testStubs = entries.map((e) => ({
+            id: uid(),
+            name: `${w.label || e.category}${e.type ? ` \u2014 ${e.type}` : ""}`,
+            category: e.category,
+            type: e.type || "",
+            skis: [],
+            rounds: [],
+            loserRounds: [],
+            glideOutRuns: [],
+            snowTemps: [],
+            airTemps: [],
+            notes: "",
+            createdAt: nowStr(),
+            deadline: w.resultBy || w.windowClose || null,
+            deadlineLabel: w.label ? `Result needed: ${w.label}` : "Result deadline",
+            scheduleWindowId: w.id
+          }));
+          return {
+            id: uid(),
+            name: w.label || `Window ${w.windowStart ? "" : "New"}`,
+            tests: testStubs,
+            snowTemps: [],
+            airTemps: [],
+            createdAt: nowStr(),
+            startedAt: w.windowStart || nowStr(),
+            scheduleWindowId: w.id
+          };
+        });
+        upd({
+          schedule: schedule2.map((w) => unactivated.some((u) => u.id === w.id) ? { ...w, activated: true } : w),
+          sessions: [...event.sessions || [], ...newSessions]
+        });
+      }
+      return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(ColHead, null, "Event Details"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "1/-1" } }, /* @__PURE__ */ React.createElement("div", { style: {
+        fontSize: 9,
+        color: C.faint,
+        fontFamily: C.mono,
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        marginBottom: 4
+      } }, "Event Name"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          value: evName,
+          onChange: (e) => setEvName(e.target.value),
+          placeholder: "e.g. USSA SuperTour Craftsbury",
+          style: {
+            width: "100%",
+            background: C.surface,
+            border: `1px solid ${C.rule}`,
+            borderRadius: 5,
+            padding: "7px 9px",
+            fontSize: 14,
+            fontWeight: 700,
+            color: C.ink,
+            boxSizing: "border-box"
+          }
+        }
+      )), /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "1/-1" } }, /* @__PURE__ */ React.createElement("div", { style: {
+        fontSize: 9,
+        color: C.faint,
+        fontFamily: C.mono,
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        marginBottom: 4
+      } }, "Race Name"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          value: evRace,
+          onChange: (e) => setEvRace(e.target.value),
+          placeholder: "e.g. 10km Classic Interval Start",
+          style: {
+            width: "100%",
+            background: C.surface,
+            border: `1px solid ${C.rule}`,
+            borderRadius: 5,
+            padding: "7px 9px",
+            fontSize: 13,
+            color: C.ink,
+            boxSizing: "border-box"
+          }
+        }
+      )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+        fontSize: 9,
+        color: C.faint,
+        fontFamily: C.mono,
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        marginBottom: 4
+      } }, "Location"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          value: evLoc,
+          onChange: (e) => setEvLoc(e.target.value),
+          placeholder: "e.g. Craftsbury, VT",
+          style: {
+            width: "100%",
+            background: C.surface,
+            border: `1px solid ${C.rule}`,
+            borderRadius: 5,
+            padding: "7px 9px",
+            fontSize: 13,
+            color: C.ink,
+            boxSizing: "border-box"
+          }
+        }
+      )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+        fontSize: 9,
+        color: C.faint,
+        fontFamily: C.mono,
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        marginBottom: 4
+      } }, "Date"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          type: "date",
+          value: evDate,
+          onChange: (e) => setEvDate(e.target.value),
+          style: {
+            width: "100%",
+            background: C.surface,
+            border: `1px solid ${C.rule}`,
+            borderRadius: 5,
+            padding: "7px 9px",
+            fontSize: 13,
+            color: C.ink,
+            boxSizing: "border-box"
+          }
+        }
+      ))), /* @__PURE__ */ React.createElement(SmallBtn, { primary: true, onClick: saveEventDetails }, evSaved ? "\u2713 Saved" : "Save Event Details"), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 22 } }, /* @__PURE__ */ React.createElement(ColHead, { action: unactivated.length > 0 ? /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: activateWaxRoomSchedule,
+          style: {
+            padding: "3px 9px",
+            borderRadius: 5,
+            border: `1px solid ${C.green}`,
+            background: `${C.green}15`,
+            color: C.green,
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: "pointer"
+          }
+        },
+        "\u25B6 Activate (",
+        unactivated.length,
+        ")"
+      ) : null }, "Schedule"), /* @__PURE__ */ React.createElement(ScheduleBuilder, { event, onUpdate })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 22 } }, /* @__PURE__ */ React.createElement(ColHead, { action: /* @__PURE__ */ React.createElement(SmallBtn, { onClick: () => setPanel("fleet") }, "Fleets") }, "Sessions"), (event.sessions || []).length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: C.faint, fontStyle: "italic", marginBottom: 8 } }, "No sessions yet. Add one below or build a schedule and activate it."), (event.sessions || []).map((sess) => /* @__PURE__ */ React.createElement("div", { key: sess.id, style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "7px 10px",
+        background: C.surface,
+        border: `1px solid ${C.rule}`,
+        borderRadius: 6,
+        marginBottom: 5
+      } }, editSessId === sess.id ? /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          autoFocus: true,
+          value: sess.name,
+          onChange: (e) => renameSession(sess.id, e.target.value),
+          onBlur: () => setEditSessId(null),
+          onKeyDown: (e) => {
+            if (e.key === "Enter" || e.key === "Escape") setEditSessId(null);
+          },
+          style: {
+            flex: 1,
+            background: C.bg,
+            border: `1px solid ${C.rule}`,
+            borderRadius: 4,
+            padding: "4px 7px",
+            fontSize: 13,
+            color: C.ink
+          }
+        }
+      ) : /* @__PURE__ */ React.createElement(
+        "span",
+        {
+          style: { flex: 1, fontSize: 13, cursor: "pointer" },
+          onDoubleClick: () => setEditSessId(sess.id)
+        },
+        sess.name,
+        /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: C.faint, marginLeft: 6, fontFamily: C.mono } }, (sess.tests || []).length, " test", (sess.tests || []).length !== 1 ? "s" : "")
+      ), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => openNewTest(sess.id),
+          style: {
+            background: "none",
+            border: `1px solid ${C.rule}`,
+            borderRadius: 4,
+            fontSize: 10,
+            fontWeight: 700,
+            padding: "2px 7px",
+            cursor: "pointer",
+            color: C.mid,
+            minHeight: 24
+          }
+        },
+        "+ Test"
+      ), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: () => deleteSession(sess.id),
+          style: {
+            background: "none",
+            border: "none",
+            color: C.red,
+            fontSize: 16,
+            cursor: "pointer",
+            padding: "0 3px"
+          }
+        },
+        "\xD7"
+      ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 8 } }, /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          value: newSessName,
+          onChange: (e) => setNewSessName(e.target.value),
+          placeholder: "New session name\u2026",
+          onKeyDown: (e) => {
+            if (e.key === "Enter") addSession();
+          },
+          style: {
+            flex: 1,
+            background: C.surface,
+            border: `1px solid ${C.rule}`,
+            borderRadius: 5,
+            padding: "7px 9px",
+            fontSize: 13,
+            color: C.ink
+          }
+        }
+      ), /* @__PURE__ */ React.createElement(SmallBtn, { primary: true, onClick: addSession }, "+ Add"))));
+    };
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+      display: "flex",
+      gap: 0,
+      marginBottom: 16,
+      borderBottom: `1px solid ${C.rule}`,
+      overflowX: "auto"
+    } }, OVERVIEW_TABS.map((t) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: t.id,
+        onClick: () => setOverviewTab(t.id),
+        style: {
+          flexShrink: 0,
+          background: "none",
+          border: "none",
+          padding: "8px 12px",
+          fontSize: 12,
+          fontWeight: overviewTab === t.id ? 700 : 400,
+          cursor: "pointer",
+          color: overviewTab === t.id ? C.ink : C.faint,
+          borderBottom: overviewTab === t.id ? `2px solid ${C.ink}` : "2px solid transparent",
+          marginBottom: -1
+        }
+      },
+      t.label,
+      t.id === "live" && liveTests.length > 0 && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 4, fontSize: 9, color: C.green, fontWeight: 700 } }, "\u25CF", liveTests.length)
+    ))), overviewTab === "live" && /* @__PURE__ */ React.createElement(React.Fragment, null, liveTests.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ React.createElement(ColHead, null, /* @__PURE__ */ React.createElement("span", { style: { color: C.green } }, "\u25CF "), "Live Tests (", liveTests.length, ")"), liveTests.map((t) => {
       const active = (t.skis || []).filter((s) => s.standing === "Active");
       const elim = (t.skis || []).filter((s) => s.standing === "Eliminated");
       const rs = computeRoundState(t.rounds || [], t.skis || []);
@@ -23575,18 +23895,12 @@ function WaxRoomDashboard({
             borderLeft: `3px solid ${C.green}`,
             borderRadius: 8,
             marginBottom: 6,
-            cursor: "pointer",
-            transition: "border-color 0.12s"
+            cursor: "pointer"
           }
         },
-        /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, t.name), /* @__PURE__ */ React.createElement("div", { style: {
-          fontSize: 11,
-          color: C.faint,
-          marginTop: 2,
-          fontFamily: "'IBM Plex Mono','SF Mono',monospace"
-        } }, t._sess.name, " \xB7 ", t.category, t.testers?.length > 0 ? ` \xB7 ${t.testers.join(", ")}` : "", rs ? ` \xB7 R${rs.currentRound}` : "")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Pill, { label: `${active.length} active`, color: C.green }), elim.length > 0 && /* @__PURE__ */ React.createElement(Pill, { label: `${elim.length} out`, color: C.faint }))),
+        /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, t.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.faint, marginTop: 2, fontFamily: C.mono } }, t._sess.name, " \xB7 ", t.category, t.testers?.length > 0 ? ` \xB7 ${t.testers.join(", ")}` : "", rs ? ` \xB7 R${rs.currentRound}` : "")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Pill, { label: `${active.length} active`, color: C.green }), elim.length > 0 && /* @__PURE__ */ React.createElement(Pill, { label: `${elim.length} out`, color: C.faint }))),
         active.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" } }, active.sort(skiSort).map((ski) => /* @__PURE__ */ React.createElement("span", { key: ski.id, style: {
-          fontFamily: "'IBM Plex Mono','SF Mono',monospace",
+          fontFamily: C.mono,
           fontSize: 11,
           fontWeight: 700,
           padding: "2px 7px",
@@ -23625,16 +23939,7 @@ function WaxRoomDashboard({
             cursor: "pointer"
           }
         },
-        /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(TrophyIcon, { size: 12, color: C.ink }), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, fontSize: 14 } }, win.product || win.id), win.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: win.waxForm }), tieNote && /* @__PURE__ */ React.createElement(Pill, { label: "tied", color: C.amber })), win.product && /* @__PURE__ */ React.createElement("span", { style: {
-          fontFamily: "'IBM Plex Mono','SF Mono',monospace",
-          fontSize: 10,
-          color: C.faint
-        } }, win.id), win.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.mid, marginTop: 1 } }, win.application), /* @__PURE__ */ React.createElement("div", { style: {
-          fontSize: 10,
-          color: C.faint,
-          marginTop: 3,
-          fontFamily: "'IBM Plex Mono','SF Mono',monospace"
-        } }, t._sess.name, " \xB7 ", t.name)), comp != null && /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, marginLeft: 8 } }, /* @__PURE__ */ React.createElement(RatingBadge, { score: comp, max }))),
+        /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(TrophyIcon, { size: 12, color: C.ink }), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, fontSize: 14 } }, win.product || win.id), win.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: win.waxForm }), tieNote && /* @__PURE__ */ React.createElement(Pill, { label: "tied", color: C.amber })), win.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: C.mid, marginTop: 1 } }, win.application), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: C.faint, marginTop: 3, fontFamily: C.mono } }, t._sess.name, " \xB7 ", t.name)), comp != null && /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, marginLeft: 8 } }, /* @__PURE__ */ React.createElement(RatingBadge, { score: comp, max }))),
         (calledAt || condParts.length > 0) && /* @__PURE__ */ React.createElement("div", { style: {
           display: "flex",
           gap: 8,
@@ -23643,25 +23948,15 @@ function WaxRoomDashboard({
           borderTop: `1px solid ${C.rule}`,
           flexWrap: "wrap",
           alignItems: "center"
-        } }, calledAt && /* @__PURE__ */ React.createElement("span", { style: {
-          fontFamily: "'IBM Plex Mono','SF Mono',monospace",
-          fontSize: 10,
-          fontWeight: 700,
-          color: C.mid
-        } }, "Called ", calledAt), condParts.map((p) => /* @__PURE__ */ React.createElement("span", { key: p, style: {
-          fontFamily: "'IBM Plex Mono','SF Mono',monospace",
+        } }, calledAt && /* @__PURE__ */ React.createElement("span", { style: { fontFamily: C.mono, fontSize: 10, fontWeight: 700, color: C.mid } }, "Called ", calledAt), condParts.map((p) => /* @__PURE__ */ React.createElement("span", { key: p, style: {
+          fontFamily: C.mono,
           fontSize: 10,
           color: C.faint,
           padding: "1px 6px",
           background: C.surface3,
           border: `1px solid ${C.rule}`,
           borderRadius: 3
-        } }, p)), calledAt && condParts.length === 0 && /* @__PURE__ */ React.createElement("span", { style: {
-          fontFamily: "'IBM Plex Mono','SF Mono',monospace",
-          fontSize: 10,
-          color: C.faint,
-          fontStyle: "italic"
-        } }, "no conditions logged"))
+        } }, p)))
       );
     })), pendingTests.length > 0 && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(ColHead, null, "Awaiting Fleet (", pendingTests.length, ")"), pendingTests.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, style: {
       padding: "8px 12px",
@@ -23669,11 +23964,7 @@ function WaxRoomDashboard({
       border: `1px dashed ${C.rule}`,
       borderRadius: 8,
       marginBottom: 5
-    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.mid } }, t.name), /* @__PURE__ */ React.createElement("div", { style: {
-      fontSize: 10,
-      color: C.faint,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace"
-    } }, t._sess.name, " \xB7 ", t.category)))), allTests.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.faint, fontStyle: "italic", padding: "16px 0" } }, "No tests yet. Create sessions and tests in the event view, or use the + Test button."));
+    } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.mid } }, t.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: C.faint, fontFamily: C.mono } }, t._sess.name, " \xB7 ", t.category)))), allTests.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: C.faint, fontStyle: "italic", padding: "16px 0" } }, "No tests yet. Use the Setup tab to build sessions and a schedule.")), overviewTab === "setup" && /* @__PURE__ */ React.createElement(SetupTab, null), overviewTab === "raceday" && /* @__PURE__ */ React.createElement(RaceDaySummary, { event, useCelsius }), overviewTab === "trend" && /* @__PURE__ */ React.createElement(ConditionsTrend, { events: [event], useCelsius }), overviewTab === "compare" && /* @__PURE__ */ React.createElement(CrossEventComparison, { events: allEvents, useCelsius }), overviewTab === "export" && /* @__PURE__ */ React.createElement(ExportPanel, { event }));
   };
   const [waxChoice, setWaxChoice] = useState(event.raceWaxChoice || "");
   const [waxReason, setWaxReason] = useState(event.raceWaxReason || "");
@@ -23708,16 +23999,32 @@ function WaxRoomDashboard({
   const latestAir = eventAir[0] || allAir[0];
   const RightCol = () => {
     const w = event.weather || {};
+    function updWeather(key, val) {
+      upd({ weather: { ...w, [key]: val } });
+    }
     const condItems = [
-      ["Air Temp", latestAir ? dispT(latestAir.tempF) : w.airTempF != null ? dispT(w.airTempF) : null],
       ["Snow Temp", latestSnow ? dispT(latestSnow.tempF) : null],
+      ["Air Temp", latestAir ? dispT(latestAir.tempF) : w.airTempF != null ? dispT(w.airTempF) : null],
       ["Snow Type", w.snowType],
       ["Sky", w.sky],
       ["Wind", w.windMph != null ? `${w.windMph} mph` : null],
-      ["Humidity", w.humidity != null ? `${w.humidity}%` : null]
+      ["Humidity", w.humidity != null ? `${w.humidity}%` : null],
+      ["Grooming", w.grooming]
     ].filter(([, v]) => v);
     const sparkSnow = [...eventSnow, ...allSnow.filter((r) => !eventSnow.find((e) => e.ts === r.ts))].slice(0, 16);
     const sparkAir = [...eventAir, ...allAir.filter((r) => !eventAir.find((e) => e.ts === r.ts))].slice(0, 16);
+    const CRYSTAL_OPTIONS = [
+      { label: "New", sub: "< 24h", val: "New snow" },
+      { label: "Settled", sub: "1\u20133 days", val: "Settled" },
+      { label: "Transformed", sub: "groomed", val: "Transformed" },
+      { label: "Faceted", sub: "dry angular", val: "Faceted" },
+      { label: "Granular", sub: "corn/wet", val: "Granular" },
+      { label: "Artificial", sub: "manmade", val: "Artificial" },
+      { label: "Falling", sub: "active snow", val: "Falling snow" },
+      { label: "Wet", sub: "saturated", val: "Wet" },
+      { label: "Glazed", sub: "ice crust", val: "Glazed" },
+      { label: "Variable", sub: "mixed", val: "Variable" }
+    ];
     return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(ColHead, null, "Race Wax Decision"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, event.raceWaxChoice && /* @__PURE__ */ React.createElement("div", { style: {
       padding: "10px 12px",
       background: C.ink,
@@ -23731,7 +24038,7 @@ function WaxRoomDashboard({
       textTransform: "uppercase",
       opacity: 0.5,
       marginBottom: 4,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace"
+      fontFamily: C.mono
     } }, "Selected"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800 } }, event.raceWaxChoice), event.raceWaxReason && /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 11,
       opacity: 0.75,
@@ -23775,10 +24082,20 @@ function WaxRoomDashboard({
           boxSizing: "border-box"
         }
       }
-    ), /* @__PURE__ */ React.createElement(SmallBtn, { primary: true, onClick: saveRaceWax }, "Save Decision")), /* @__PURE__ */ React.createElement(ColHead, null, "Log Temperature"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    ), /* @__PURE__ */ React.createElement(SmallBtn, { primary: true, onClick: saveRaceWax }, "Save Decision")), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement(
+      WaxRecommendPanel,
+      {
+        allEvents,
+        session: { weather: w, snowTemps: eventSnow, airTemps: eventAir },
+        event,
+        useCelsius,
+        catalog,
+        structureCatalog
+      }
+    )), /* @__PURE__ */ React.createElement(ColHead, null, "Log Temperature"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 9,
       color: C.faint,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace",
+      fontFamily: C.mono,
       textTransform: "uppercase",
       letterSpacing: "0.08em",
       marginBottom: 4
@@ -23812,7 +24129,7 @@ function WaxRoomDashboard({
     } }, "Log"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 9,
       color: C.faint,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace",
+      fontFamily: C.mono,
       textTransform: "uppercase",
       letterSpacing: "0.08em",
       marginBottom: 4
@@ -23843,41 +24160,203 @@ function WaxRoomDashboard({
     ), /* @__PURE__ */ React.createElement(SmallBtn, { onClick: () => {
       logTemp("air", tempAirIn);
       setTempAirIn("");
-    } }, "Log")))), (latestSnow || latestAir) && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 14 } }, latestSnow && /* @__PURE__ */ React.createElement("span", { style: {
+    } }, "Log")))), (latestSnow || latestAir) && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" } }, latestSnow && /* @__PURE__ */ React.createElement("span", { style: {
       fontSize: 11,
       padding: "3px 8px",
       borderRadius: 4,
       background: C.surface3,
       border: `1px solid ${C.rule}`,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace"
+      fontFamily: C.mono
     } }, "Snow ", dispT(latestSnow.tempF)), latestAir && /* @__PURE__ */ React.createElement("span", { style: {
       fontSize: 11,
       padding: "3px 8px",
       borderRadius: 4,
       background: C.surface3,
       border: `1px solid ${C.rule}`,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace"
-    } }, "Air ", dispT(latestAir.tempF))), condItems.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ColHead, null, "Conditions"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 } }, condItems.map(([k, v]) => /* @__PURE__ */ React.createElement("div", { key: k, style: {
-      background: C.surface,
-      borderRadius: 6,
-      padding: "7px 8px",
-      border: `1px solid ${C.rule}`
-    } }, /* @__PURE__ */ React.createElement("div", { style: {
-      fontSize: 8,
-      fontWeight: 700,
+      fontFamily: C.mono
+    } }, "Air ", dispT(latestAir.tempF))), /* @__PURE__ */ React.createElement(ColHead, null, "Conditions"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 10 } }, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
       color: C.faint,
-      letterSpacing: "0.08em",
+      fontFamily: C.mono,
       textTransform: "uppercase",
-      marginBottom: 2,
-      fontFamily: "'IBM Plex Mono','SF Mono',monospace"
-    } }, k), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 600 } }, v))))), sparkSnow.length > 1 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ColHead, null, "Temp Log"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, [["Snow", sparkSnow, C.mid], ["Air", sparkAir, C.faint]].map(([label, readings, col]) => {
+      letterSpacing: "0.08em",
+      marginBottom: 6
+    } }, "Snow Crystal Type"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, flexWrap: "wrap" } }, CRYSTAL_OPTIONS.map(({ label, sub, val }) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: val,
+        onClick: () => updWeather("snowType", w.snowType === val ? null : val),
+        style: {
+          padding: "4px 8px",
+          borderRadius: 12,
+          fontSize: 11,
+          cursor: "pointer",
+          border: `1px solid ${C.rule}`,
+          lineHeight: 1.3,
+          textAlign: "center",
+          background: w.snowType === val ? C.ink : C.surface,
+          color: w.snowType === val ? C.bg : C.mid
+        }
+      },
+      /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, label),
+      /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, opacity: 0.7 } }, sub)
+    )))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      color: C.faint,
+      fontFamily: C.mono,
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      marginBottom: 4
+    } }, "Sky"), /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        value: w.sky || "",
+        onChange: (e) => updWeather("sky", e.target.value || null),
+        style: {
+          width: "100%",
+          background: C.surface,
+          border: `1px solid ${C.rule}`,
+          borderRadius: 5,
+          padding: "6px 8px",
+          fontSize: 12,
+          color: C.ink
+        }
+      },
+      /* @__PURE__ */ React.createElement("option", { value: "" }, "\u2014"),
+      ["Clear", "Mostly Clear", "Partly Cloudy", "Overcast", "Foggy", "Snowing", "Blowing Snow"].map((o) => /* @__PURE__ */ React.createElement("option", { key: o, value: o }, o))
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      color: C.faint,
+      fontFamily: C.mono,
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      marginBottom: 4
+    } }, "Humidity %"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        value: w.humidity ?? "",
+        placeholder: "e.g. 75",
+        onChange: (e) => updWeather("humidity", e.target.value === "" ? null : Number(e.target.value)),
+        style: {
+          width: "100%",
+          background: C.surface,
+          border: `1px solid ${C.rule}`,
+          borderRadius: 5,
+          padding: "6px 8px",
+          fontSize: 12,
+          color: C.ink,
+          boxSizing: "border-box"
+        }
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      color: C.faint,
+      fontFamily: C.mono,
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      marginBottom: 4
+    } }, "Wind mph"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        value: w.windMph ?? "",
+        placeholder: "e.g. 5",
+        onChange: (e) => updWeather("windMph", e.target.value === "" ? null : Number(e.target.value)),
+        style: {
+          width: "100%",
+          background: C.surface,
+          border: `1px solid ${C.rule}`,
+          borderRadius: 5,
+          padding: "6px 8px",
+          fontSize: 12,
+          color: C.ink,
+          boxSizing: "border-box"
+        }
+      }
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      color: C.faint,
+      fontFamily: C.mono,
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      marginBottom: 4
+    } }, "Snow Depth cm"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        value: w.snowDepthCm ?? "",
+        placeholder: "e.g. 30",
+        onChange: (e) => updWeather("snowDepthCm", e.target.value === "" ? null : Number(e.target.value)),
+        style: {
+          width: "100%",
+          background: C.surface,
+          border: `1px solid ${C.rule}`,
+          borderRadius: 5,
+          padding: "6px 8px",
+          fontSize: 12,
+          color: C.ink,
+          boxSizing: "border-box"
+        }
+      }
+    ))), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      color: C.faint,
+      fontFamily: C.mono,
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      marginBottom: 4
+    } }, "Grooming / Snow Age"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        value: w.grooming || "",
+        placeholder: "e.g. 1-day-old machine groomed",
+        onChange: (e) => updWeather("grooming", e.target.value || null),
+        style: {
+          width: "100%",
+          background: C.surface,
+          border: `1px solid ${C.rule}`,
+          borderRadius: 5,
+          padding: "6px 8px",
+          fontSize: 12,
+          color: C.ink,
+          boxSizing: "border-box"
+        }
+      }
+    )), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      color: C.faint,
+      fontFamily: C.mono,
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      marginBottom: 4
+    } }, "Course Notes"), /* @__PURE__ */ React.createElement(
+      "textarea",
+      {
+        value: w.trailNotes || "",
+        placeholder: "Track notes, problem sections, sun exposure\u2026",
+        rows: 2,
+        onChange: (e) => updWeather("trailNotes", e.target.value || null),
+        style: {
+          width: "100%",
+          background: C.surface,
+          border: `1px solid ${C.rule}`,
+          borderRadius: 5,
+          padding: "6px 8px",
+          fontSize: 12,
+          color: C.ink,
+          resize: "none",
+          boxSizing: "border-box"
+        }
+      }
+    )), sparkSnow.length > 1 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ColHead, null, "Temp Log"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 14 } }, [["Snow", sparkSnow, C.mid], ["Air", sparkAir, C.faint]].map(([label, readings, col]) => {
       if (!readings.length) return null;
       const vals = readings.slice(0, 12).map((r) => useCelsius ? (r.tempF - 32) * 5 / 9 : r.tempF).reverse();
       const mn = Math.min(...vals) - 1, mx2 = Math.max(...vals) + 1, range = mx2 - mn || 1;
       return /* @__PURE__ */ React.createElement("div", { key: label, style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: {
         fontSize: 9,
         color: C.faint,
-        fontFamily: "'IBM Plex Mono','SF Mono',monospace",
+        fontFamily: C.mono,
         textTransform: "uppercase",
         letterSpacing: "0.08em",
         marginBottom: 3
@@ -23913,9 +24392,17 @@ function WaxRoomDashboard({
         justifyContent: "space-between",
         fontSize: 9,
         color: C.faint,
-        fontFamily: "'IBM Plex Mono','SF Mono',monospace"
+        fontFamily: C.mono
       } }, /* @__PURE__ */ React.createElement("span", null, dispT(readings[readings.length - 1].tempF)), /* @__PURE__ */ React.createElement("span", null, "\u2192 ", dispT(readings[0].tempF))));
-    }))));
+    }))), onSendMessage && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 4 } }, /* @__PURE__ */ React.createElement(
+      TeamMessagesPanel,
+      {
+        messages,
+        onSend: onSendMessage,
+        onDelete: onDeleteMessage,
+        teamCode
+      }
+    )));
   };
   function handleTestSelect(sessId, testId) {
     setSelTest({ sessId, testId });
@@ -23995,7 +24482,7 @@ function WaxRoomDashboard({
     borderBottom: `1px solid ${C.rule}`,
     background: C.surface,
     overflowX: "auto"
-  } }, [["overview", "Overview"], ["schedule", "Schedule"], ["conditions", "Conditions"]].map(([id, label]) => /* @__PURE__ */ React.createElement(
+  } }, [["overview", "Overview"], ["schedule", "Schedule"], ["conditions", "Conditions"], ["messages", "\u{1F4E1} Board"]].map(([id, label]) => /* @__PURE__ */ React.createElement(
     "button",
     {
       key: id,
@@ -24034,7 +24521,15 @@ function WaxRoomDashboard({
     padding: "20px 16px",
     minHeight: !is1col ? "calc(100vh - 54px)" : void 0,
     overflowY: "auto"
-  } }, /* @__PURE__ */ React.createElement(RightCol, null))), !is4col && bracketOpen && selectedTest && /* @__PURE__ */ React.createElement(
+  } }, /* @__PURE__ */ React.createElement(RightCol, null)), is1col && mobileTab === "messages" && onSendMessage && /* @__PURE__ */ React.createElement("div", { style: { padding: "16px" } }, /* @__PURE__ */ React.createElement(
+    TeamMessagesPanel,
+    {
+      messages,
+      onSend: onSendMessage,
+      onDelete: onDeleteMessage,
+      teamCode
+    }
+  ))), !is4col && bracketOpen && selectedTest && /* @__PURE__ */ React.createElement(
     "div",
     {
       onClick: () => setBracketOpen(false),
