@@ -17061,7 +17061,7 @@ function TournamentSkiRow({
         if (f) setRewaxForm(f);
       },
       onCommit: (v) => onVocabAdd?.(test.type === "Hand structure" ? "structures" : "products", [v]),
-      suggestions: test.type === "Hand structure" ? vocab?.structures || [] : vocab?.products || [],
+      suggestions: test.type === "Hand structure" ? vocab?.structures || [] : test.category === "kick" ? vocab?.kickProducts || vocab?.products || [] : vocab?.glideProducts || vocab?.products || [],
       placeholder: test.type === "Hand structure" ? "e.g. Speedy Z1N-36\u2026" : test.category === "kick" ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026",
       style: { marginBottom: 6 }
     }
@@ -18680,7 +18680,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
         if (f) setRewaxForm(f);
       },
       onCommit: (v) => onVocabAdd?.(test.type === "Hand structure" ? "structures" : "products", [v]),
-      suggestions: test.type === "Hand structure" ? vocab?.structures || [] : vocab?.products || [],
+      suggestions: test.type === "Hand structure" ? vocab?.structures || [] : test.category === "kick" ? vocab?.kickProducts || vocab?.products || [] : vocab?.glideProducts || vocab?.products || [],
       placeholder: test.type === "Hand structure" ? "e.g. Speedy Z1N-36\u2026" : test.category === "kick" ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026",
       style: { marginBottom: 6 }
     }
@@ -18834,13 +18834,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
     const isKick = test.category === "kick";
     const productLabel = isStruct ? "Structure Tool" : isKick ? "Kick Wax" : "Glide Wax";
     const productPlaceholder = isStruct ? "e.g. Speedy Z1N-36\u2026" : isKick ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026";
-    const productSuggestions = isStruct ? vocab?.structures || [] : isKick ? (vocab?.products || []).filter((p) => {
-      const lp = p.toLowerCase();
-      return lp.includes("kick") || lp.includes("klister") || lp.includes("binder") || lp.includes("blue") || lp.includes("violet") || lp.includes("green kick") || lp.includes("oslo") || lp.includes("vario") || lp.includes("multigrade") || lp.includes("b310") || lp.includes("b17") || lp.includes("weiss") || lp.includes("rossa") || lp.includes("v30") || lp.includes("v40") || lp.includes("v50") || lp.includes("vp") || lp.includes("guru") || (vocab?.products || []).length < 30;
-    }) : (vocab?.products || []).filter((p) => {
-      const lp = p.toLowerCase();
-      return !lp.includes(" kick") && !lp.includes("klister") && !lp.includes("binder") && !lp.match(/\bvp\d\d\b/);
-    });
+    const productSuggestions = isStruct ? vocab?.structures || [] : isKick ? vocab?.kickProducts || vocab?.products || [] : vocab?.glideProducts || vocab?.products || [];
     const appPlaceholder = isStruct ? "e.g. 3 passes tip-to-tail" : "Iron temp, layers\u2026";
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
       ACI,
@@ -19063,7 +19057,7 @@ function SkiEditInline({ ski, vocab, onSave, onCancel, onPhotoSave, teamCode, ev
   const isKick = category === "kick";
   const productLabel = isStruct ? "Structure Tool" : isKick ? "Kick Wax" : "Glide Wax";
   const productPlaceholder = isStruct ? "e.g. Speedy Z1N-36\u2026" : isKick ? "e.g. Rode B17\u2026" : "e.g. Rode Endurance\u2026";
-  const productSuggestions = isStruct ? vocab?.structures || [] : vocab?.products || [];
+  const productSuggestions = isStruct ? vocab?.structures || [] : isKick ? vocab?.kickProducts || vocab?.products || [] : vocab?.glideProducts || vocab?.products || [];
   return /* @__PURE__ */ React.createElement("div", { className: "card", style: { padding: 14, marginBottom: 6, border: "2px solid var(--ink)" } }, showPhotos && onPhotoSave && /* @__PURE__ */ React.createElement(
     PhotoSheet,
     {
@@ -21025,7 +21019,15 @@ function App() {
     const seedVoc = { ...voc || {} };
     const allCatalogEntries = [...cat || [], ...WAX_SEED_CATALOG];
     allCatalogEntries.forEach((e) => {
-      if (e.product) seedVoc.products = [.../* @__PURE__ */ new Set([...seedVoc.products || [], e.product])].sort();
+      if (e.product) {
+        seedVoc.products = [.../* @__PURE__ */ new Set([...seedVoc.products || [], e.product])].sort();
+        const cat2 = (e.category || "").toLowerCase();
+        if (cat2 === "glide" || cat2 === "base") {
+          seedVoc.glideProducts = [.../* @__PURE__ */ new Set([...seedVoc.glideProducts || [], e.product])].sort();
+        } else if (cat2 === "kick" || cat2 === "klister" || cat2 === "binder") {
+          seedVoc.kickProducts = [.../* @__PURE__ */ new Set([...seedVoc.kickProducts || [], e.product])].sort();
+        }
+      }
       if (e.application) seedVoc.applications = [.../* @__PURE__ */ new Set([...seedVoc.applications || [], e.application])].sort();
       if (e.brand) seedVoc.brands = [.../* @__PURE__ */ new Set([...seedVoc.brands || [], e.brand])].sort();
     });
@@ -21033,6 +21035,18 @@ function App() {
     allStructEntries.forEach((s) => {
       const key = s.product?.includes(s.brand) ? s.product : `${s.brand} ${s.product}`;
       seedVoc.structures = [.../* @__PURE__ */ new Set([...seedVoc.structures || [], key])].sort();
+    });
+    loadRemoteSeedStructureCatalog().then((remoteStructs) => {
+      if (!remoteStructs?.length) return;
+      setVocab((prev) => {
+        const merged = { ...prev };
+        remoteStructs.forEach((s) => {
+          if (!s.product) return;
+          const key = s.product.includes(s.brand || "") ? s.product : `${s.brand || ""} ${s.product}`.trim();
+          merged.structures = [.../* @__PURE__ */ new Set([...merged.structures || [], key])].sort();
+        });
+        return merged;
+      });
     });
     setStructureCatalog(structCat || []);
     setMessages(msgs || []);
