@@ -21089,7 +21089,7 @@ function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore
     }
   }
   const visible = sorted.filter((e) => e.id !== pendingDelete?.id);
-  return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 16px 12px", borderBottom: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
+  return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, showHelp && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowHelp(false) }), /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 16px 12px", borderBottom: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
     fontSize: 10,
     fontWeight: 600,
     letterSpacing: "0.12em",
@@ -21124,16 +21124,55 @@ function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore
   )), /* @__PURE__ */ React.createElement("div", { style: { padding: 16 } }, /* @__PURE__ */ React.createElement(
     GuidanceBanner,
     {
-      storageKey: "waxlab:guide:events2",
-      title: "How WaxLab is organised",
+      storageKey: "waxlab:guide:events3",
+      title: "Event \u2192 Session \u2192 Test",
       lines: [
-        "An Event is a single race day or venue \u2014 e.g. Craftsbury SuperTour Jan 18.",
-        "Inside each Event you create Sessions (time or condition blocks) and inside each Session you run Tests to compare skis head-to-head.",
-        "Use the Schedule tab to plan your race day before you arrive \u2014 define testing windows and race times, then activate the schedule to auto-create sessions and tests with deadlines pre-filled.",
-        "After testing, Race Day shows all winners with conditions. Record which wax you actually raced and why."
+        "An Event is a race day. Sessions are time or condition blocks. Tests compare skis head-to-head inside a session.",
+        "Start by creating an event, then use the Schedule tab to plan testing windows before you arrive. Activate the schedule to auto-create sessions with deadlines pre-filled.",
+        "After testing, Race Day tab shows all winners with conditions. Record which wax you actually raced."
       ]
     }
-  ), visible.length === 0 && !pendingDelete ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "48px 0", color: "var(--ink-faint)", fontSize: 15 } }, "No events yet.", /* @__PURE__ */ React.createElement("br", null), "Tap New Event to get started.") : visible.map((ev) => {
+  ), visible.length === 0 && !pendingDelete ? /* @__PURE__ */ React.createElement("div", { style: { padding: "32px 0 48px" } }, /* @__PURE__ */ React.createElement("div", { style: {
+    background: "var(--paper-2)",
+    border: "1px solid var(--rule)",
+    borderRadius: 10,
+    padding: "14px 16px",
+    marginBottom: 20,
+    opacity: 0.6
+  } }, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "var(--ink-faint)",
+    fontFamily: "'IBM Plex Mono',monospace",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    marginBottom: 8
+  } }, "Your first event will look like this"), [
+    { label: "Craftsbury SuperTour", sub: "Jan 18 \xB7 Craftsbury, VT", winners: 3, tests: 6 }
+  ].map((e, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { padding: "10px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, e.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-faint)", marginTop: 2 } }, e.sub), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--green)", fontWeight: 600 } }, "\u{1F3C6} ", e.winners, " winners"), /* @__PURE__ */ React.createElement("span", { style: {
+    fontSize: 11,
+    color: "var(--ink-faint)",
+    fontFamily: "'IBM Plex Mono',monospace"
+  } }, e.tests, " tests"))))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, marginBottom: 6 } }, "No events yet"), /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 13,
+    color: "var(--ink-faint)",
+    lineHeight: 1.6,
+    marginBottom: 20
+  } }, "Create your first event to start tracking.", /* @__PURE__ */ React.createElement("br", null), "Takes about 30 seconds."), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setShowHelp(true),
+      style: {
+        fontSize: 12,
+        color: "var(--blue)",
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        textDecoration: "underline"
+      }
+    },
+    "Not sure where to start? See how it works \u2192"
+  ))) : visible.map((ev) => {
     const w = ev.weather;
     const winCount = (ev.sessions || []).flatMap((s) => s.tests || []).filter((t) => t.skis?.some((s) => s.standing === "Winner")).length;
     const testCount = (ev.sessions || []).flatMap((s) => s.tests || []).length;
@@ -21226,19 +21265,158 @@ function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore
   ))));
 }
 const STEPS = [
-  { icon: /* @__PURE__ */ React.createElement("svg", { width: "44", height: "44", viewBox: "0 0 24 24", fill: "none", stroke: "var(--blue)", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M12 2L8 6H4l2 4-4 2 4 2-2 4h4l4 4 4-4h4l-2-4 4-2-4-2 2-4h-4z" })), title: "Welcome to WaxLab", body: "A wax testing app for Nordic ski racing staff. Works on any phone. The lead sets up the schedule \u2014 the whole team collaborates and sees results live." },
-  { icon: /* @__PURE__ */ React.createElement("svg", { width: "44", height: "44", viewBox: "0 0 24 24", fill: "none", stroke: "var(--ink)", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "3", width: "18", height: "18", rx: "2" }), /* @__PURE__ */ React.createElement("path", { d: "M3 9h18" }), /* @__PURE__ */ React.createElement("path", { d: "M9 21V9" })), title: "Event \u2192 Session \u2192 Test", body: "An Event is a race day. Sessions are time or condition blocks within it. Each Session holds one or more concurrent Tests \u2014 glide topcoat and kick binder can run at the same time with different testers." },
-  { icon: /* @__PURE__ */ React.createElement("svg", { width: "44", height: "44", viewBox: "0 0 24 24", fill: "none", stroke: "var(--blue)", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2" }), /* @__PURE__ */ React.createElement("path", { d: "M16 2v4" }), /* @__PURE__ */ React.createElement("path", { d: "M8 2v4" }), /* @__PURE__ */ React.createElement("path", { d: "M3 10h18" }), /* @__PURE__ */ React.createElement("path", { d: "M8 14h.01" }), /* @__PURE__ */ React.createElement("path", { d: "M12 14h.01" }), /* @__PURE__ */ React.createElement("path", { d: "M16 14h.01" }), /* @__PURE__ */ React.createElement("path", { d: "M8 18h.01" }), /* @__PURE__ */ React.createElement("path", { d: "M12 18h.01" })), title: "Schedule your race day", body: "Use the Schedule tab to plan before you arrive. Define testing windows with start time, close time, result deadline, and which test types are needed. Add race times as markers. Activate the schedule to auto-create sessions and tests with deadlines pre-filled." },
-  { icon: /* @__PURE__ */ React.createElement("svg", { width: "44", height: "44", viewBox: "0 0 24 24", fill: "none", stroke: "var(--green)", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M8 6h13" }), /* @__PURE__ */ React.createElement("path", { d: "M8 12h13" }), /* @__PURE__ */ React.createElement("path", { d: "M8 18h13" }), /* @__PURE__ */ React.createElement("path", { d: "M3 6h.01" }), /* @__PURE__ */ React.createElement("path", { d: "M3 12h.01" }), /* @__PURE__ */ React.createElement("path", { d: "M3 18h.01" })), title: "Populate fleet fast", body: "Schedule-created tests start empty. Tap 'Populate fleet from another test' on any empty test card to copy skis and products from an earlier session \u2014 results stay clear. Works across all sessions in the same event." },
-  { icon: /* @__PURE__ */ React.createElement("svg", { width: "44", height: "44", viewBox: "0 0 24 24", fill: "none", stroke: "var(--amber)", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" })), title: "Running a tournament", body: "Add skis in Fleet, then open Tournament. Advance or Eliminate skis head-to-head. Rate glide feel right on the card. The winner is declared automatically when all others are eliminated." },
-  { icon: /* @__PURE__ */ React.createElement("svg", { width: "44", height: "44", viewBox: "0 0 24 24", fill: "none", stroke: "var(--ink)", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M17.94 17.94A10.07 10.07 0 0 1 12 20a10 10 0 0 1-7.94-4" }), /* @__PURE__ */ React.createElement("path", { d: "M2 2l20 20" }), /* @__PURE__ */ React.createElement("path", { d: "M7.94 7.94A10.07 10.07 0 0 1 12 4a10 10 0 0 1 7.94 4" }), /* @__PURE__ */ React.createElement("path", { d: "M12 12a3 3 0 0 1-3-3" })), title: "Blind testing", body: "Enable Blind Mode in Fleet. Testers see only ski IDs \u2014 no product names. Reveal after the winner is declared to eliminate bias." },
-  { icon: /* @__PURE__ */ React.createElement("svg", { width: "44", height: "44", viewBox: "0 0 24 24", fill: "none", stroke: "var(--blue)", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" })), title: "Conditions & deadlines", body: "Log weather via GPS. Snow temp is one tap away with the \u2744 button. Set a deadline on any test \u2014 the app alerts you when time is running out. Schedule windows fire alerts at open, warning threshold, and close." },
-  { icon: /* @__PURE__ */ React.createElement("svg", { width: "44", height: "44", viewBox: "0 0 24 24", fill: "none", stroke: "var(--green)", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "22 12 18 12 15 21 9 3 6 12 2 12" })), title: "Race Day summary", body: "The Race Day tab shows all winners with conditions and ratings \u2014 ready to read in the wax cabin. Record which wax you actually raced and why. Trend tab shows how conditions shifted across the day." },
-  { icon: /* @__PURE__ */ React.createElement("svg", { width: "44", height: "44", viewBox: "0 0 24 24", fill: "none", stroke: "var(--ink)", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "21 15 21 19 3 19 3 15" }), /* @__PURE__ */ React.createElement("path", { d: "M7 10l5 5 5-5" }), /* @__PURE__ */ React.createElement("path", { d: "M12 15V3" })), title: "Autocomplete & export", body: "Product names autocomplete from your team's shared catalog. Export any event as Excel. Toggle \xB0F / \xB0C anywhere. Voice commands work for common actions \u2014 try saying 'advance ski 3'." }
+  {
+    title: "Your wax testing, organized",
+    body: "WaxLab tracks every ski, every product, every condition across a whole race season. By the end of the year, you'll have a searchable record of what actually worked.",
+    visual: () => /* @__PURE__ */ React.createElement("div", { style: {
+      background: "var(--paper-2)",
+      borderRadius: 10,
+      padding: "12px 14px",
+      border: "1px solid var(--rule)",
+      marginBottom: 4
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: "var(--ink-faint)",
+      fontFamily: "'IBM Plex Mono',monospace",
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      marginBottom: 8
+    } }, "Race Day Summary \xB7 Craftsbury Jan 18"), [
+      { role: "Topcoat", prod: "Rode Endurance + RR Cera", temp: "26\xB0F", badge: "Winner", c: "var(--green)" },
+      { role: "Paraffin", prod: "Vauhti HF Red", temp: "26\xB0F", badge: "Winner", c: "var(--green)" },
+      { role: "Structure", prod: "SRB LM", temp: "26\xB0F", badge: "Winner", c: "var(--green)" }
+    ].map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "5px 0",
+      borderTop: i > 0 ? "1px solid var(--rule)" : void 0
+    } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      color: "var(--ink-faint)",
+      fontFamily: "'IBM Plex Mono',monospace",
+      textTransform: "uppercase",
+      letterSpacing: "0.06em"
+    } }, r.role), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "var(--ink)" } }, r.prod)), /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: r.c,
+      padding: "2px 6px",
+      border: `1px solid ${r.c}`,
+      borderRadius: 4,
+      fontFamily: "'IBM Plex Mono',monospace"
+    } }, r.badge))))
+  },
+  {
+    title: "Three layers, that's it",
+    body: "An Event is a race day. Inside it, Sessions are time blocks. Inside each Session, you run Tests \u2014 glide, kick, structure \u2014 with skis going head-to-head.",
+    visual: () => /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, [
+      { label: "Event", sub: "Craftsbury SuperTour", color: "var(--blue)", indent: 0 },
+      { label: "Session", sub: "Morning \u2014 cold track", color: "var(--ink-mid)", indent: 16 },
+      { label: "Test", sub: "Glide topcoat \xB7 4 skis", color: "var(--ink-faint)", indent: 32 },
+      { label: "Test", sub: "Kick binder \xB7 3 skis", color: "var(--ink-faint)", indent: 32 },
+      { label: "Session", sub: "Pre-race \u2014 warming", color: "var(--ink-mid)", indent: 16 },
+      { label: "Test", sub: "Glide final \xB7 2 skis", color: "var(--ink-faint)", indent: 32 }
+    ].map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      paddingLeft: r.indent
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      width: 3,
+      height: 24,
+      borderRadius: 2,
+      background: r.color,
+      flexShrink: 0
+    } }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: r.color,
+      fontFamily: "'IBM Plex Mono',monospace",
+      textTransform: "uppercase",
+      letterSpacing: "0.07em"
+    } }, r.label), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink)" } }, r.sub)))))
+  },
+  {
+    title: "The whole team, one view",
+    body: "Every device on the same team code sees results live. The lead tech sets up sessions in the Wax Room \u2014 testers run tournaments on their phones and winners appear instantly.",
+    visual: () => /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 2 } }, ["Wax Room", "Field \xB7 Phone"].map((role, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
+      flex: 1,
+      background: "var(--paper-2)",
+      border: "1px solid var(--rule)",
+      borderRadius: 7,
+      padding: "8px 10px"
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: "var(--ink-faint)",
+      fontFamily: "'IBM Plex Mono',monospace",
+      textTransform: "uppercase",
+      letterSpacing: "0.07em",
+      marginBottom: 4
+    } }, role), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink)", lineHeight: 1.4 } }, i === 0 ? "Builds schedule, sets conditions, sees all results" : "Runs tournaments, advances skis, declares winners")))), /* @__PURE__ */ React.createElement("div", { style: {
+      background: "var(--paper-2)",
+      border: "1px solid var(--green)",
+      borderRadius: 7,
+      padding: "7px 10px",
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    } }, /* @__PURE__ */ React.createElement(TrophyIcon, { size: 12, color: "var(--green)" }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 700 } }, "B3 \u2014 Rode Endurance"), /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 10,
+      color: "var(--ink-faint)",
+      fontFamily: "'IBM Plex Mono',monospace"
+    } }, "Won \xB7 Called 09:42 \xB7 snow 26\xB0F")), /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 9,
+      color: "var(--green)",
+      marginLeft: "auto",
+      fontFamily: "'IBM Plex Mono',monospace",
+      fontWeight: 700
+    } }, "\u25CF live")))
+  },
+  {
+    title: "Start simple",
+    body: "Create an event, add a few skis, run your first comparison. The schedule builder, AI recommendations, and cross-season analysis are all there when you need them \u2014 but you don't need them on day one.",
+    visual: () => /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, [
+      { n: 1, label: "Create an event", done: false, action: "New Event \u2192" },
+      { n: 2, label: "Add skis to a test", done: false, action: "Fleet tab" },
+      { n: 3, label: "Run a tournament", done: false, action: "Tournament tab" },
+      { n: 4, label: "Declare a winner", done: false, action: "auto" }
+    ].map((s) => /* @__PURE__ */ React.createElement("div", { key: s.n, style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      padding: "7px 10px",
+      background: "var(--paper-2)",
+      border: "1px solid var(--rule)",
+      borderRadius: 7
+    } }, /* @__PURE__ */ React.createElement("div", { style: {
+      width: 22,
+      height: 22,
+      borderRadius: "50%",
+      background: s.done ? "var(--green)" : "var(--paper-3)",
+      border: `1px solid ${s.done ? "var(--green)" : "var(--rule)"}`,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0
+    } }, /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 10,
+      fontWeight: 800,
+      color: s.done ? "#fff" : "var(--ink-faint)",
+      fontFamily: "'IBM Plex Mono',monospace"
+    } }, s.n)), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: "var(--ink)", flex: 1 } }, s.label), /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 10,
+      color: "var(--ink-faint)",
+      fontFamily: "'IBM Plex Mono',monospace"
+    } }, s.action))))
+  }
 ];
 function OnboardingOverlay({ onDone }) {
   const [step, setStep] = useState(0);
   const s = STEPS[step];
+  const Visual = s.visual;
   return /* @__PURE__ */ React.createElement("div", { style: {
     position: "fixed",
     inset: 0,
@@ -21246,15 +21424,72 @@ function OnboardingOverlay({ onDone }) {
     zIndex: 1e3,
     display: "flex",
     alignItems: "flex-end",
-    justifyContent: "center",
-    padding: "0 0 0"
-  } }, /* @__PURE__ */ React.createElement("div", { style: { background: "var(--paper)", width: "100%", maxWidth: 480, borderRadius: "16px 16px 0 0", padding: "28px 24px 40px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", marginBottom: 12 } }, s.icon), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800, textAlign: "center", marginBottom: 8 } }, s.title), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, color: "var(--ink-mid)", lineHeight: 1.65, textAlign: "center", marginBottom: 24 } }, s.body), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", gap: 6, marginBottom: 20 } }, STEPS.map((_, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: {
-    width: 7,
-    height: 7,
-    borderRadius: "50%",
-    background: i === step ? "var(--ink)" : "var(--rule)",
-    transition: "background 0.2s"
-  } }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } }, step > 0 && /* @__PURE__ */ React.createElement("button", { className: "btn-ghost", style: { flex: 1 }, onClick: () => setStep((s2) => s2 - 1) }, "Back"), step < STEPS.length - 1 ? /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: () => setStep((s2) => s2 + 1) }, "Next") : /* @__PURE__ */ React.createElement("button", { className: "btn", style: { flex: 2 }, onClick: onDone }, "Get Started"), /* @__PURE__ */ React.createElement("button", { className: "btn-text", onClick: onDone, style: { padding: "8px 12px" } }, "Skip"))));
+    justifyContent: "center"
+  } }, /* @__PURE__ */ React.createElement("div", { style: {
+    background: "var(--paper)",
+    width: "100%",
+    maxWidth: 480,
+    borderRadius: "16px 16px 0 0",
+    padding: "24px 20px 40px",
+    maxHeight: "92vh",
+    overflowY: "auto"
+  } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", gap: 6, marginBottom: 20 } }, STEPS.map((_, i) => /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      key: i,
+      onClick: () => setStep(i),
+      style: {
+        width: i === step ? 20 : 7,
+        height: 7,
+        borderRadius: 4,
+        background: i === step ? "var(--ink)" : i < step ? "var(--ink-mid)" : "var(--rule)",
+        transition: "all 0.2s",
+        cursor: "pointer"
+      }
+    }
+  ))), /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 20,
+    fontWeight: 800,
+    marginBottom: 8,
+    letterSpacing: "-0.01em"
+  } }, s.title), /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 14,
+    color: "var(--ink-mid)",
+    lineHeight: 1.65,
+    marginBottom: 20
+  } }, s.body), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 24 } }, /* @__PURE__ */ React.createElement(Visual, null)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } }, step > 0 && /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "btn-ghost",
+      style: { flex: 1 },
+      onClick: () => setStep((s2) => s2 - 1)
+    },
+    "Back"
+  ), step < STEPS.length - 1 ? /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "btn",
+      style: { flex: 2 },
+      onClick: () => setStep((s2) => s2 + 1)
+    },
+    "Next \u2192"
+  ) : /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "btn",
+      style: { flex: 2 },
+      onClick: onDone
+    },
+    "Create first event \u2192"
+  ), step === 0 && /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "btn-text",
+      onClick: onDone,
+      style: { padding: "8px 10px", fontSize: 12 }
+    },
+    "Skip"
+  ))));
 }
 function getHashTeam() {
   return window.location.hash.replace("#", "").toUpperCase() || null;
@@ -21275,7 +21510,7 @@ function normalise(s) {
 function TeamSelector({ onJoin }) {
   const [code, setCode] = useState(getHashTeam() || "");
   const [step, setStep] = useState("team");
-  const [showHelp, setShowHelp] = useState(false);
+  const [showHelp2, setShowHelp2] = useState(false);
   const recents = getRecentTeams();
   const isFirstTime = recents.length === 0;
   const MONO = "'IBM Plex Mono','SF Mono','Fira Code','Courier New',monospace";
@@ -21297,7 +21532,7 @@ function TeamSelector({ onJoin }) {
     alignItems: "center",
     background: "var(--paper)",
     padding: 24
-  } }, showHelp && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowHelp(false) }), /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 400 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+  } }, showHelp2 && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowHelp2(false) }), /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 400 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: "0.12em",
@@ -21306,18 +21541,35 @@ function TeamSelector({ onJoin }) {
   } }, "WaxLab"), /* @__PURE__ */ React.createElement(
     "button",
     {
-      onClick: () => setShowHelp(true),
+      onClick: () => setShowHelp2(true),
       className: "btn-ghost",
       style: { fontSize: 12, padding: "6px 12px", minHeight: 32 }
     },
     "How it works"
-  )), step === "team" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 30, fontWeight: 800, marginBottom: 6, letterSpacing: "-0.01em" } }, "Wax Testing"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "var(--ink-mid)", marginBottom: 28, lineHeight: 1.5 } }, "Nordic ski wax testing for racing staff."), isFirstTime && /* @__PURE__ */ React.createElement("div", { style: {
+  )), step === "team" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 30, fontWeight: 800, marginBottom: 6, letterSpacing: "-0.01em" } }, "Wax Testing"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: "var(--ink-mid)", marginBottom: 28, lineHeight: 1.5 } }, "Nordic ski wax testing for racing staff."), isFirstTime && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ React.createElement("div", { style: {
     background: "var(--paper-2)",
     border: "1px solid var(--rule)",
     borderRadius: 8,
     padding: "12px 14px",
-    marginBottom: 20
-  } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 4 } }, "Getting started"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-mid)", lineHeight: 1.6 } }, "Choose a team name \u2014 anything works. Use your club, team, or your own name. Everyone testing with you enters the same name to share results in real time. You can also use it solo.")), /* @__PURE__ */ React.createElement(Lbl, null, "Your team name"), /* @__PURE__ */ React.createElement(
+    marginBottom: 10
+  } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 4 } }, "Welcome to WaxLab"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-mid)", lineHeight: 1.6 } }, "Choose a team code \u2014 your club, your name, anything. Everyone on your wax crew enters the same code to share results live. Works solo too.")), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setShowHelp2(true),
+      style: {
+        width: "100%",
+        padding: "9px 0",
+        borderRadius: 8,
+        fontSize: 13,
+        fontWeight: 600,
+        color: "var(--blue)",
+        background: "transparent",
+        border: "1px solid var(--blue)",
+        cursor: "pointer"
+      }
+    },
+    "See how it works first \u2192"
+  )), /* @__PURE__ */ React.createElement(Lbl, null, "Your team name"), /* @__PURE__ */ React.createElement(
     "input",
     {
       className: "inp mono",
