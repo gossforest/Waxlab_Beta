@@ -21074,6 +21074,7 @@ function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore
   const sorted = [...events].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const [showNewModal, setShowNewModal] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [showHelp, setShowHelp] = useState(false);
   const lastEvent = sorted.find((e) => e.id !== pendingDelete?.id) || null;
   function requestDelete(ev, e) {
     e.stopPropagation();
@@ -21510,7 +21511,7 @@ function normalise(s) {
 function TeamSelector({ onJoin }) {
   const [code, setCode] = useState(getHashTeam() || "");
   const [step, setStep] = useState("team");
-  const [showHelp2, setShowHelp2] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const recents = getRecentTeams();
   const isFirstTime = recents.length === 0;
   const MONO = "'IBM Plex Mono','SF Mono','Fira Code','Courier New',monospace";
@@ -21532,7 +21533,7 @@ function TeamSelector({ onJoin }) {
     alignItems: "center",
     background: "var(--paper)",
     padding: 24
-  } }, showHelp2 && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowHelp2(false) }), /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 400 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+  } }, showHelp && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowHelp(false) }), /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 400 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: "0.12em",
@@ -21541,7 +21542,7 @@ function TeamSelector({ onJoin }) {
   } }, "WaxLab"), /* @__PURE__ */ React.createElement(
     "button",
     {
-      onClick: () => setShowHelp2(true),
+      onClick: () => setShowHelp(true),
       className: "btn-ghost",
       style: { fontSize: 12, padding: "6px 12px", minHeight: 32 }
     },
@@ -21555,7 +21556,7 @@ function TeamSelector({ onJoin }) {
   } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 4 } }, "Welcome to WaxLab"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-mid)", lineHeight: 1.6 } }, "Choose a team code \u2014 your club, your name, anything. Everyone on your wax crew enters the same code to share results live. Works solo too.")), /* @__PURE__ */ React.createElement(
     "button",
     {
-      onClick: () => setShowHelp2(true),
+      onClick: () => setShowHelp(true),
       style: {
         width: "100%",
         padding: "9px 0",
