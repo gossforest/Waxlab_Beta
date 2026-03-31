@@ -11605,7 +11605,8 @@ function SkiLayerEditor({ layers = [], category = "glide", testType = "", vocab,
     "+ Add Layer"
   ));
 }
-function SkiLayerStack({ layers = [], isBlind = false }) {
+const SkiLayerStack = React.memo(SkiLayerStack_);
+function SkiLayerStack_({ layers = [], isBlind = false }) {
   if (!layers.length) return null;
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, marginTop: 4 } }, layers.map((l, idx) => {
     const comps = l.components?.filter((c) => c.product) || (l.product ? [{ product: l.product }] : []);
@@ -13137,7 +13138,8 @@ const SKI_CONDITION_COLORS = {
   "Base damage": "var(--red)",
   "Retired": "var(--ink-faint)"
 };
-function FleetSkiRow({ ski, onChange, onDelete }) {
+const FleetSkiRow = React.memo(FleetSkiRow_);
+function FleetSkiRow_({ ski, onChange, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const condColor = SKI_CONDITION_COLORS[ski.condition] || "var(--ink-faint)";
   const isRetired = ski.condition === "Retired";
@@ -13834,6 +13836,25 @@ function GlideOutSkiLabel({ ski, isBlind, style = {} }) {
 }
 function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamTesters = [], useCelsius = false }) {
   const [open, setOpen] = useState(!(comp.legA?.cmAhead != null && comp.legB?.cmAhead != null));
+  const [localCourse, setLocalCourse] = useState(comp.course || "");
+  const [localLegANote, setLocalLegANote] = useState(comp.legA?.notes || "");
+  const [localLegBNote, setLocalLegBNote] = useState(comp.legB?.notes || "");
+  const courseTimer = useRef(null);
+  const legATimer = useRef(null);
+  const legBTimer = useRef(null);
+  const compRef = useRef(comp);
+  if (comp !== compRef.current) {
+    compRef.current = comp;
+    setLocalCourse(comp.course || "");
+    setLocalLegANote(comp.legA?.notes || "");
+    setLocalLegBNote(comp.legB?.notes || "");
+  }
+  function commitCourse(val) {
+    onUpdate({ ...comp, course: val.trim() || null });
+  }
+  function commitLegNote(leg, val) {
+    onUpdate({ ...comp, [leg]: { ...comp[leg] || {}, notes: val } });
+  }
   const skiA = skis?.find((s) => s.id === comp.skiA);
   const skiB = skis?.find((s) => s.id === comp.skiB);
   const complete = comp.legA?.cmAhead != null && comp.legB?.cmAhead != null;
@@ -13915,8 +13936,17 @@ function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamT
   } }, "Course / Section"), /* @__PURE__ */ React.createElement(
     "input",
     {
-      value: comp.course || "",
-      onChange: (e) => onUpdate({ ...comp, course: e.target.value }),
+      value: localCourse,
+      onChange: (e) => {
+        const v = e.target.value;
+        setLocalCourse(v);
+        clearTimeout(courseTimer.current);
+        courseTimer.current = setTimeout(() => commitCourse(v), 400);
+      },
+      onBlur: (e) => {
+        clearTimeout(courseTimer.current);
+        commitCourse(e.target.value);
+      },
       placeholder: "e.g. B-sector",
       style: {
         width: "100%",
@@ -14061,8 +14091,17 @@ function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamT
     {
       className: "inp",
       rows: 1,
-      value: comp.legA?.notes || "",
-      onChange: (e) => updLeg("legA", "notes", e.target.value),
+      value: localLegANote,
+      onChange: (e) => {
+        const v = e.target.value;
+        setLocalLegANote(v);
+        clearTimeout(legATimer.current);
+        legATimer.current = setTimeout(() => commitLegNote("legA", v), 400);
+      },
+      onBlur: (e) => {
+        clearTimeout(legATimer.current);
+        commitLegNote("legA", e.target.value);
+      },
       placeholder: "Track, conditions, timing\u2026",
       style: { width: "100%", resize: "none", fontSize: 12, boxSizing: "border-box" }
     }
@@ -14087,8 +14126,17 @@ function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamT
     {
       className: "inp",
       rows: 1,
-      value: comp.legB?.notes || "",
-      onChange: (e) => updLeg("legB", "notes", e.target.value),
+      value: localLegBNote,
+      onChange: (e) => {
+        const v = e.target.value;
+        setLocalLegBNote(v);
+        clearTimeout(legBTimer.current);
+        legBTimer.current = setTimeout(() => commitLegNote("legB", v), 400);
+      },
+      onBlur: (e) => {
+        clearTimeout(legBTimer.current);
+        commitLegNote("legB", e.target.value);
+      },
       placeholder: "Track, conditions, timing\u2026",
       style: { width: "100%", resize: "none", fontSize: 12, boxSizing: "border-box" }
     }
@@ -14112,7 +14160,8 @@ function GlideOutComparisonCard({ comp, skis, isBlind, onUpdate, onDelete, teamT
     "Delete this comparison"
   )));
 }
-function GlideOutResults({ test, onUpdate, isBlind, useCelsius }) {
+const GlideOutResults = React.memo(GlideOutResults_);
+function GlideOutResults_({ test, onUpdate, isBlind, useCelsius }) {
   const comparisons = test.glideOutRuns || [];
   const activeSkis = (test.skis || []).filter((s) => s.standing !== "Eliminated");
   const hasWinner = test.skis?.some((s) => s.standing === "Winner");
@@ -17105,7 +17154,8 @@ function SkiCard({ ski, isGlide, isBlind, onRatingChange, onPhotoSave, teamCode,
     }
   )));
 }
-function TournamentFlow({ test, isGlide, isBlind }) {
+const TournamentFlow = React.memo(TournamentFlow_);
+function TournamentFlow_({ test, isGlide, isBlind }) {
   const rawMatches = test.rounds || [];
   const skis = test.skis || [];
   if (rawMatches.length === 0) return null;
@@ -17749,7 +17799,8 @@ function computeKickRankings(test) {
     // positive = moved up, negative = moved down
   }));
 }
-function TournamentSkiRow({
+const TournamentSkiRow = React.memo(TournamentSkiRow_);
+function TournamentSkiRow_({
   ski,
   status,
   dim = false,
