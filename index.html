@@ -12097,6 +12097,7 @@ function DeadlinePicker({ test, onSave, onClose }) {
 function useMic(onResult) {
   const [listening, setListening] = useState(false);
   const recRef = useRef(null);
+  const transcriptRef = useRef("");
   const supported = typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   function start() {
     if (!supported || listening) return;
@@ -12104,17 +12105,31 @@ function useMic(onResult) {
     const rec = new SR();
     rec.lang = "en-US";
     rec.interimResults = false;
+    rec.continuous = true;
     rec.maxAlternatives = 1;
-    rec.onresult = (e) => onResult(e.results[0][0].transcript);
+    transcriptRef.current = "";
+    rec.onresult = (e) => {
+      let segment = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          segment += e.results[i][0].transcript + " ";
+        }
+      }
+      transcriptRef.current += segment;
+    };
     rec.onerror = () => setListening(false);
-    rec.onend = () => setListening(false);
+    rec.onend = () => {
+      setListening(false);
+      const transcript = transcriptRef.current.trim();
+      if (transcript) onResult(transcript);
+      transcriptRef.current = "";
+    };
     rec.start();
     recRef.current = rec;
     setListening(true);
   }
   function stop() {
     recRef.current?.stop();
-    setListening(false);
   }
   useEffect(() => () => recRef.current?.stop(), []);
   return { listening, supported, start, stop };
@@ -13123,7 +13138,7 @@ function VoiceCommandBar({ skis, isGlide, onAdvance, onEliminate, onWinner, onRe
         cursor: parsing ? "default" : void 0
       }
     },
-    listening ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(StopIcon, { size: 14, color: "#fff" }), " Listening \u2014 tap to stop") : parsing ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13 } }, "\u23F3"), " Parsing\u2026") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(MicIcon, { size: 16 }), " Voice Command")
+    listening ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(StopIcon, { size: 14, color: "#fff" }), " Listening\u2026 tap when done") : parsing ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13 } }, "\u23F3"), " Parsing\u2026") : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(MicIcon, { size: 16 }), " Voice Command")
   ), /* @__PURE__ */ React.createElement(
     "button",
     {
