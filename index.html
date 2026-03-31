@@ -17055,7 +17055,7 @@ function TournamentSkiCard({ ski, isGlide, isBlind, onAdvance, onEliminate, onRu
       style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }
     },
     /* @__PURE__ */ React.createElement(AdvanceIcon, { size: 15, color: "#fff" }),
-    isGlide ? "Faster" : "Better"
+    "Advance"
   ), /* @__PURE__ */ React.createElement(
     "button",
     {
@@ -17064,8 +17064,8 @@ function TournamentSkiCard({ ski, isGlide, isBlind, onAdvance, onEliminate, onRu
       style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }
     },
     /* @__PURE__ */ React.createElement(EliminateIcon, { size: 14, color: "#fff" }),
-    " Slower"
-  )), /* @__PURE__ */ React.createElement("div", { style: { padding: "5px 0 6px", textAlign: "center" }, className: "mono" }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)", letterSpacing: "0.04em" } }, "swipe \u2192 ", isGlide ? "faster" : "better", "  \xB7  swipe \u2190 slower")))));
+    " Eliminate"
+  )), /* @__PURE__ */ React.createElement("div", { style: { padding: "5px 0 6px", textAlign: "center" }, className: "mono" }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)", letterSpacing: "0.04em" } }, "swipe \u2192 advance  \xB7  swipe \u2190 eliminate")))));
 }
 function SkiCard({ ski, isGlide, isBlind, onRatingChange, onPhotoSave, teamCode, eventId }) {
   const [open, setOpen] = useState(false);
@@ -19130,7 +19130,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
           }
         },
         /* @__PURE__ */ React.createElement(AdvanceIcon, { size: 13, color: "#fff" }),
-        isGlide ? "Faster" : "Better"
+        "Advance"
       ), /* @__PURE__ */ React.createElement(
         "button",
         {
@@ -19148,7 +19148,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
           }
         },
         /* @__PURE__ */ React.createElement(EliminateIcon, { size: 13, color: "var(--red)" }),
-        " Slower"
+        " Eliminate"
       )))));
     };
     const nextSuggestion = bothActed ? suggestPair(roundState) : null;
