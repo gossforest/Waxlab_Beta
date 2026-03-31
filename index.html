@@ -20337,6 +20337,7 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
   const setActiveTestId = onSetActiveTest || (() => {
   });
   const [creatingTest, setCreatingTest] = useState(false);
+  const test = useMemo(() => (session.tests || []).find((t) => t.id === activeTestId) || null, [session.tests, activeTestId]);
   const [newTestName, setNewTestName] = useState("");
   const [newTestCategory, setNewTestCategory] = useState("glide");
   const [newTestType, setNewTestType] = useState("");
@@ -20357,7 +20358,6 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
   }
   const { alarmTest, dismissAlarm, snooze } = useDeadlines(session.tests, handleSnooze);
   if (activeTestId) {
-    const test = useMemo(() => (session.tests || []).find((t) => t.id === activeTestId) || null, [session.tests, activeTestId]);
     if (!test) return null;
     return /* @__PURE__ */ React.createElement(TestViewErrorBoundary, { test, onBack: () => setActiveTestId(null) }, /* @__PURE__ */ React.createElement(
       TestView,
@@ -20471,13 +20471,13 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
         'Tip: when creating a new test, the "Copy from existing" section lets you pick any test from any session in the event and import its fleet and products with results cleared. Empty tests created from the schedule show a "Populate fleet" shortcut directly on the card.'
       ]
     }
-  ), /* @__PURE__ */ React.createElement(Hr, null), (session.tests || []).length === 0 && !creatingTest && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "28px 16px", color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(ClipboardIcon, { size: 30, color: "var(--ink-faint)" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 4 } }, "No tests yet"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, lineHeight: 1.5 } }, "Tap + New Test to start a glide or kick tournament, or activate the schedule to auto-create tests.")), (session.tests || []).map((test) => {
-    const winner = test.skis?.find((s) => s.standing === "Winner");
-    const active = test.skis?.filter((s) => s.standing === "Active") || [];
+  ), /* @__PURE__ */ React.createElement(Hr, null), (session.tests || []).length === 0 && !creatingTest && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "28px 16px", color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(ClipboardIcon, { size: 30, color: "var(--ink-faint)" })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 4 } }, "No tests yet"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, lineHeight: 1.5 } }, "Tap + New Test to start a glide or kick tournament, or activate the schedule to auto-create tests.")), (session.tests || []).map((test2) => {
+    const winner = test2.skis?.find((s) => s.standing === "Winner");
+    const active = test2.skis?.filter((s) => s.standing === "Active") || [];
     return /* @__PURE__ */ React.createElement(
       "div",
       {
-        key: test.id,
+        key: test2.id,
         className: "card",
         style: {
           marginBottom: 8,
@@ -20487,25 +20487,25 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
         },
         onClick: (e) => {
           if (e.target.closest("button")) return;
-          setActiveTestId(test.id);
+          setActiveTestId(test2.id);
         }
       },
-      /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, test.name || "Unnamed Test"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 2 } }, test.category, " \xB7 ", test.type || "\u2014", " \xB7 ", (test.skis || []).length, " ski", (test.skis || []).length !== 1 ? "s" : "", Array.isArray(test.testers) && test.testers.length ? ` \xB7 ${test.testers.join(", ")}` : typeof test.testers === "string" && test.testers ? ` \xB7 ${test.testers}` : ""), winner && !test.blindMode && winner.product && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: {
+      /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, test2.name || "Unnamed Test"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 2 } }, test2.category, " \xB7 ", test2.type || "\u2014", " \xB7 ", (test2.skis || []).length, " ski", (test2.skis || []).length !== 1 ? "s" : "", Array.isArray(test2.testers) && test2.testers.length ? ` \xB7 ${test2.testers.join(", ")}` : typeof test2.testers === "string" && test2.testers ? ` \xB7 ${test2.testers}` : ""), winner && !test2.blindMode && winner.product && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: {
         width: 5,
         height: 5,
         borderRadius: "50%",
         background: "var(--green)",
         flexShrink: 0
-      } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "var(--ink-mid)" } }, winner.product), winner.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: winner.waxForm }), winner.application && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, winner.application), test.completedAt && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "\xB7 ", fmtTime(test.completedAt))), winner && (test.blindMode || !winner.product) && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: {
+      } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "var(--ink-mid)" } }, winner.product), winner.waxForm && /* @__PURE__ */ React.createElement(WaxFormBadge, { form: winner.waxForm }), winner.application && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-faint)" } }, winner.application), test2.completedAt && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "\xB7 ", fmtTime(test2.completedAt))), winner && (test2.blindMode || !winner.product) && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: {
         width: 5,
         height: 5,
         borderRadius: "50%",
         background: "var(--green)",
         flexShrink: 0
-      } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "var(--ink-mid)" } }, winner.id, " won"), test.completedAt && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "\xB7 ", fmtTime(test.completedAt))), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, fontSize: 11, color: "var(--amber)" } }, active.length, " ski", active.length !== 1 ? "s" : "", " still active")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } }, winner && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--ink-mid)", fontSize: 9 } }, "Winner"), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--amber)", fontSize: 9 } }, "Active"), test.deadline && /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test.deadline, completed: !!test.completedAt }), /* @__PURE__ */ React.createElement(
+      } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: "var(--ink-mid)" } }, winner.id, " won"), test2.completedAt && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, "\xB7 ", fmtTime(test2.completedAt))), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 5, fontSize: 11, color: "var(--amber)" } }, active.length, " ski", active.length !== 1 ? "s" : "", " still active")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } }, winner && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--ink-mid)", fontSize: 9 } }, "Winner"), !winner && active.length > 0 && /* @__PURE__ */ React.createElement("span", { className: "tag", style: { color: "var(--amber)", fontSize: 9 } }, "Active"), test2.deadline && /* @__PURE__ */ React.createElement(CountdownBadge, { deadline: test2.deadline, completed: !!test2.completedAt }), /* @__PURE__ */ React.createElement(
         "button",
         {
-          onClick: () => setDeadlinePickerTest(test),
+          onClick: () => setDeadlinePickerTest(test2),
           className: "btn-ghost",
           title: "Set deadline",
           style: {
@@ -20537,7 +20537,7 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
       ), /* @__PURE__ */ React.createElement(
         "button",
         {
-          onClick: () => setActiveTestId(test.id),
+          onClick: () => setActiveTestId(test2.id),
           className: "btn",
           style: { fontSize: 13, padding: "8px 18px", minHeight: 44 }
         },
@@ -20548,17 +20548,17 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
           title: "Copy test to any session",
           onClick: (e) => {
             e.stopPropagation();
-            setCopyingTest(test);
+            setCopyingTest(test2);
           },
           className: "btn-ghost",
           style: { fontSize: 12, padding: "6px 10px", minHeight: 34 }
         },
         "Copy"
-      ), confirmDeleteTestId === test.id ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--red)", fontWeight: 600 } }, "Delete?"), /* @__PURE__ */ React.createElement(
+      ), confirmDeleteTestId === test2.id ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--red)", fontWeight: 600 } }, "Delete?"), /* @__PURE__ */ React.createElement(
         "button",
         {
           onClick: () => {
-            upd({ tests: (session.tests || []).filter((t) => t.id !== test.id) });
+            upd({ tests: (session.tests || []).filter((t) => t.id !== test2.id) });
             setConfirmDeleteTestId(null);
           },
           className: "btn",
@@ -20583,20 +20583,20 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
       )) : /* @__PURE__ */ React.createElement(
         "button",
         {
-          onClick: () => setConfirmDeleteTestId(test.id),
+          onClick: () => setConfirmDeleteTestId(test2.id),
           className: "btn-text",
           style: { fontSize: 20 }
         },
         "\xD7"
       ))),
-      test.notes && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 10px", fontSize: 12, color: "var(--ink-mid)", fontStyle: "italic" } }, test.notes),
+      test2.notes && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 10px", fontSize: 12, color: "var(--ink-mid)", fontStyle: "italic" } }, test2.notes),
       (() => {
-        const isEmpty = !test.skis?.length;
+        const isEmpty = !test2.skis?.length;
         const sourceCandidates = eventSessions.flatMap(
-          (s) => (s.tests || []).filter((t) => t.id !== test.id && t.skis?.length > 0 && (t.category === test.category || !test.category)).map((t) => ({ ...t, _sessName: s.name }))
+          (s) => (s.tests || []).filter((t) => t.id !== test2.id && t.skis?.length > 0 && (t.category === test2.category || !test2.category)).map((t) => ({ ...t, _sessName: s.name }))
         );
         if (!isEmpty || sourceCandidates.length === 0) return null;
-        if (populatingTestId !== test.id) {
+        if (populatingTestId !== test2.id) {
           return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 14px 10px" } }, /* @__PURE__ */ React.createElement(
             "button",
             {
@@ -20608,7 +20608,7 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
                 color: "var(--ink)",
                 borderColor: "var(--rule)"
               },
-              onClick: () => setPopulatingTestId(test.id)
+              onClick: () => setPopulatingTestId(test2.id)
             },
             "\u21B3 Populate fleet from another test\u2026"
           ));
@@ -20628,14 +20628,14 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
               onClick: () => {
                 const populated = copyTest(src, "");
                 const merged = {
-                  ...test,
+                  ...test2,
                   skis: populated.skis,
                   glideOutRuns: [],
                   rounds: [],
                   completedAt: void 0,
                   completedConditions: void 0
                 };
-                upd({ tests: (session.tests || []).map((t) => t.id === test.id ? merged : t) });
+                upd({ tests: (session.tests || []).map((t) => t.id === test2.id ? merged : t) });
                 setPopulatingTestId(null);
               },
               style: {
@@ -20867,12 +20867,7 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
   const [addingSession, setAddingSession] = useState(false);
   const setActiveSessionId = onSetActiveSession || (() => {
   });
-  function upd(patch) {
-    onUpdate({ ...event, ...patch });
-  }
-  function updateSession(updated) {
-    upd({ sessions: (event.sessions || []).map((s) => s.id === updated.id ? updated : s) });
-  }
+  const sess = useMemo(() => (event.sessions || []).find((s) => s.id === activeSessionId) || null, [event.sessions, activeSessionId]);
   const [scheduleAlert, setScheduleAlert] = useState(null);
   const onScheduleAlert = useCallback((alert) => {
     setScheduleAlert(alert);
@@ -20889,8 +20884,13 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
     }
   }, []);
   useScheduleAlerts(event.schedule, onScheduleAlert);
+  function upd(patch) {
+    onUpdate({ ...event, ...patch });
+  }
+  function updateSession(updated) {
+    upd({ sessions: (event.sessions || []).map((s) => s.id === updated.id ? updated : s) });
+  }
   if (activeSessionId) {
-    const sess = useMemo(() => (event.sessions || []).find((s) => s.id === activeSessionId) || null, [event.sessions, activeSessionId]);
     if (!sess) return null;
     return /* @__PURE__ */ React.createElement(
       SessionView,
@@ -20983,10 +20983,10 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
       schedule: event.schedule,
       raceTimes: event.raceTimes || [],
       onNavigate: (w) => {
-        const sess = (event.sessions || []).find((s) => s.scheduleWindowId === w.id);
-        if (sess) {
+        const sess2 = (event.sessions || []).find((s) => s.scheduleWindowId === w.id);
+        if (sess2) {
           setTab("sessions");
-          setActiveSessionId(sess.id);
+          setActiveSessionId(sess2.id);
         } else setTab("schedule");
       }
     }
@@ -20998,22 +20998,22 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
       onClick: () => setTab(t.id)
     },
     t.label
-  ))), /* @__PURE__ */ React.createElement("div", { style: { padding: 16, paddingBottom: 40 } }, tab === "sessions" && /* @__PURE__ */ React.createElement(React.Fragment, null, (event.sessions || []).map((sess) => {
-    const tc = (sess.tests || []).length;
-    const wc = (sess.tests || []).filter((t) => t.skis?.some((s) => s.standing === "Winner")).length;
-    const sessIsEmpty = tc > 0 && (sess.tests || []).every((t) => !t.skis?.length);
+  ))), /* @__PURE__ */ React.createElement("div", { style: { padding: 16, paddingBottom: 40 } }, tab === "sessions" && /* @__PURE__ */ React.createElement(React.Fragment, null, (event.sessions || []).map((sess2) => {
+    const tc = (sess2.tests || []).length;
+    const wc = (sess2.tests || []).filter((t) => t.skis?.some((s) => s.standing === "Winner")).length;
+    const sessIsEmpty = tc > 0 && (sess2.tests || []).every((t) => !t.skis?.length);
     return /* @__PURE__ */ React.createElement(
       "div",
       {
-        key: sess.id,
+        key: sess2.id,
         className: "card",
         style: { marginBottom: 8, overflow: "visible", cursor: "pointer" },
-        onClick: () => setActiveSessionId(sess.id)
+        onClick: () => setActiveSessionId(sess2.id)
       },
-      /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, sess.name), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 2 } }, tc, " test", tc !== 1 ? "s" : "", " \xB7 ", wc, " winner", wc !== 1 ? "s" : ""), sessIsEmpty && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--blue)", marginTop: 3 } }, "No skis yet \u2014 open to populate fleet")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement(
+      /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, sess2.name), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 2 } }, tc, " test", tc !== 1 ? "s" : "", " \xB7 ", wc, " winner", wc !== 1 ? "s" : ""), sessIsEmpty && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--blue)", marginTop: 3 } }, "No skis yet \u2014 open to populate fleet")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement(
         "button",
         {
-          onClick: () => setActiveSessionId(sess.id),
+          onClick: () => setActiveSessionId(sess2.id),
           className: "btn",
           style: { fontSize: 13, padding: "8px 18px", minHeight: 44 }
         },
@@ -21023,18 +21023,18 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
         {
           title: "Duplicate session (copies fleet setup, clears results)",
           onClick: () => {
-            const copy = copySession(sess, event.sessions || []);
+            const copy = copySession(sess2, event.sessions || []);
             upd({ sessions: [...event.sessions || [], copy] });
           },
           className: "btn-ghost",
           style: { fontSize: 12, padding: "6px 10px", minHeight: 34 }
         },
         "Copy"
-      ), confirmDeleteSessionId === sess.id ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--red)", fontWeight: 600 } }, "Delete?"), /* @__PURE__ */ React.createElement(
+      ), confirmDeleteSessionId === sess2.id ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--red)", fontWeight: 600 } }, "Delete?"), /* @__PURE__ */ React.createElement(
         "button",
         {
           onClick: () => {
-            upd({ sessions: (event.sessions || []).filter((s) => s.id !== sess.id) });
+            upd({ sessions: (event.sessions || []).filter((s) => s.id !== sess2.id) });
             setConfirmDeleteSessionId(null);
           },
           className: "btn",
@@ -21059,7 +21059,7 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
       )) : /* @__PURE__ */ React.createElement(
         "button",
         {
-          onClick: () => setConfirmDeleteSessionId(sess.id),
+          onClick: () => setConfirmDeleteSessionId(sess2.id),
           className: "btn-text",
           style: { fontSize: 20 }
         },
