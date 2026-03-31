@@ -22082,6 +22082,7 @@ function TeamSelector({ onJoin }) {
 function TeamBar({ teamCode, syncStatus, darkMode, onToggleDark, onLeave, useCelsius, onUnitToggle, onFleets, appMode, onSwitchMode, messages = [], onSendMessage: onSendMessage2, onDeleteMessage }) {
   const [copied, setCopied] = useState(false);
   const [msgOpen, setMsgOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const { permission: notifPerm, request: requestNotif } = useNotificationPermission();
   const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
   const statusColor = isOffline ? "var(--ink-faint)" : syncStatus === "saving" ? "var(--amber)" : syncStatus === "error" ? "var(--red)" : "var(--green)";
@@ -22179,31 +22180,145 @@ function TeamBar({ teamCode, syncStatus, darkMode, onToggleDark, onLeave, useCel
       style: { fontSize: 11, padding: "4px 8px", minHeight: 30 }
     },
     darkMode ? /* @__PURE__ */ React.createElement(SunIcon, { size: 13, color: "var(--ink-mid)" }) : /* @__PURE__ */ React.createElement(MoonIcon, { size: 13, color: "var(--ink-mid)" })
-  ), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement("button", { onClick: onLeave, className: "btn-text", style: { fontSize: 11, padding: "4px 6px" } }, "Switch"), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement(
     "button",
     {
-      onClick: onFleets,
+      onClick: () => setMenuOpen((o) => !o),
       className: "btn-ghost",
-      style: { fontSize: 11, padding: "4px 8px", minHeight: 30 }
+      style: {
+        fontSize: 16,
+        padding: "2px 8px",
+        minHeight: 30,
+        lineHeight: 1,
+        fontWeight: 700,
+        color: "var(--ink-mid)",
+        background: menuOpen ? "var(--paper-3)" : void 0
+      }
     },
-    "Fleets"
-  ), onSwitchMode && /* @__PURE__ */ React.createElement(
+    "\u22EF"
+  ), menuOpen && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      onClick: () => setMenuOpen(false),
+      style: { position: "fixed", inset: 0, zIndex: 498 }
+    }
+  ), /* @__PURE__ */ React.createElement("div", { style: {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    right: 0,
+    background: "var(--paper)",
+    border: "1px solid var(--rule)",
+    borderRadius: 10,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+    zIndex: 499,
+    minWidth: 160,
+    overflow: "hidden"
+  } }, /* @__PURE__ */ React.createElement("div", { style: {
+    padding: "8px 14px",
+    borderBottom: "1px solid var(--rule)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12
+  } }, /* @__PURE__ */ React.createElement("span", { style: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    fontFamily: "'IBM Plex Mono',monospace"
+  } }, "Units"), /* @__PURE__ */ React.createElement(UnitPill, { useCelsius, onChange: onUnitToggle })), onSwitchMode && /* @__PURE__ */ React.createElement(
     "button",
     {
-      onClick: onSwitchMode,
-      className: "btn-ghost",
-      style: { fontSize: 11, padding: "4px 8px", minHeight: 30 }
+      onClick: () => {
+        onSwitchMode();
+        setMenuOpen(false);
+      },
+      style: {
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        background: "none",
+        border: "none",
+        padding: "10px 14px",
+        fontSize: 13,
+        fontWeight: 600,
+        color: "var(--ink)",
+        cursor: "pointer",
+        fontFamily: "inherit",
+        borderBottom: "1px solid var(--rule)"
+      }
     },
     modeLabel
   ), /* @__PURE__ */ React.createElement(
     "button",
     {
-      onClick: copy,
-      className: "btn-ghost",
-      style: { fontSize: 11, padding: "4px 8px", minHeight: 30 }
+      onClick: () => {
+        onFleets();
+        setMenuOpen(false);
+      },
+      style: {
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        background: "none",
+        border: "none",
+        padding: "10px 14px",
+        fontSize: 13,
+        fontWeight: 600,
+        color: "var(--ink)",
+        cursor: "pointer",
+        fontFamily: "inherit",
+        borderBottom: "1px solid var(--rule)"
+      }
     },
-    copied ? "\u2713" : "Share"
-  ), /* @__PURE__ */ React.createElement("button", { onClick: onLeave, className: "btn-text", style: { fontSize: 11 } }, "Switch"))), msgOpen && onSendMessage2 && /* @__PURE__ */ React.createElement(
+    "Fleets"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => {
+        copy();
+        setMenuOpen(false);
+      },
+      style: {
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        background: "none",
+        border: "none",
+        padding: "10px 14px",
+        fontSize: 13,
+        fontWeight: 600,
+        color: "var(--ink)",
+        cursor: "pointer",
+        fontFamily: "inherit",
+        borderBottom: onSendMessage2 && notifPerm === "default" ? "1px solid var(--rule)" : "none"
+      }
+    },
+    copied ? "\u2713 Copied" : "Share link"
+  ), onSendMessage2 && notifPerm === "default" && /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => {
+        requestNotif();
+        setMenuOpen(false);
+      },
+      style: {
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        background: "none",
+        border: "none",
+        padding: "10px 14px",
+        fontSize: 13,
+        fontWeight: 600,
+        color: "var(--amber)",
+        cursor: "pointer",
+        fontFamily: "inherit"
+      }
+    },
+    "Enable alerts"
+  )))))), msgOpen && onSendMessage2 && /* @__PURE__ */ React.createElement(
     "div",
     {
       onClick: () => setMsgOpen(false),
