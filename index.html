@@ -13266,6 +13266,198 @@ function FleetSkiRow({ ski, onChange, onDelete }) {
     }
   )))));
 }
+function FleetQuickAdd({ fleet, onChange, generateIdSequence: generateIdSequence2, nextSkiId: nextSkiId2 }) {
+  const [qaCount2, setQaCount2] = useState("8");
+  const [qaConvention, setQaConvention] = useState("");
+  const [qaConvId, setQaConvId] = useState(null);
+  const [qaLettersPerNum, setQaLettersPerNum] = useState(null);
+  const [qaDesc2, setQaDesc2] = useState("");
+  const [qaFlex, setQaFlex] = useState("");
+  const [qaGrind, setQaGrind] = useState("");
+  const [qaErr, setQaErr] = useState("");
+  const CONVENTIONS = [
+    { id: "1a2", label: "1a, 1b, 2a\u2026", start: "1a", lettersPerNum: 2 },
+    { id: "1a3", label: "1a, 1b, 1c, 2a\u2026", start: "1a", lettersPerNum: 3 },
+    { id: "A1", label: "A1, A2, B1\u2026", start: "A1", lettersPerNum: null },
+    { id: "A", label: "A, B, C\u2026", start: "A", lettersPerNum: null },
+    { id: "1", label: "1, 2, 3\u2026", start: "1", lettersPerNum: null }
+  ];
+  const existingSkis = fleet.skis.filter((s) => s.id);
+  const autoStart = existingSkis.length > 0 ? nextSkiId2(existingSkis) : qaConvention || "A1";
+  const resolvedStart = (qaConvention || autoStart).toUpperCase();
+  const count = Math.min(Math.max(parseInt(qaCount2) || 0, 1), 50);
+  const lpm = qaLettersPerNum;
+  const preview = resolvedStart ? generateIdSequence2(resolvedStart, Math.min(count, 8), lpm || 26) : [];
+  const previewSuffix = count > 8 ? ` \u2026 ${generateIdSequence2(resolvedStart, count, lpm || 26).slice(-1)[0]}` : "";
+  function apply() {
+    setQaErr("");
+    if (!count) {
+      setQaErr("Enter a number of skis.");
+      return;
+    }
+    const ids = generateIdSequence2(resolvedStart, count, qaLettersPerNum || 26);
+    const existingIds = new Set(fleet.skis.map((s) => (s.id || "").toUpperCase()));
+    const dupes = ids.filter((id) => existingIds.has(id));
+    if (dupes.length) {
+      setQaErr(`IDs already exist: ${dupes.slice(0, 4).join(", ")}${dupes.length > 4 ? " \u2026" : ""}`);
+      return;
+    }
+    const newSkis = ids.map((id) => ({
+      id,
+      make: qaDesc2.trim(),
+      flex: qaFlex.trim(),
+      grind: qaGrind.trim(),
+      grindDate: "",
+      condition: "",
+      serviceFlag: "",
+      notes: ""
+    }));
+    onChange({ ...fleet, skis: [...fleet.skis, ...newSkis] });
+    setQaCount2("8");
+    setQaConvention("");
+    setQaConvId(null);
+    setQaLettersPerNum(null);
+    setQaDesc2("");
+    setQaFlex("");
+    setQaGrind("");
+    setQaErr("");
+  }
+  return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 6 } }, "Quick Add"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginBottom: 5
+  } }, "Naming convention"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, flexWrap: "wrap" } }, CONVENTIONS.map((c) => {
+    const active = qaConvId === c.id;
+    return /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: c.id,
+        onClick: () => {
+          if (active) {
+            setQaConvention("");
+            setQaConvId(null);
+            setQaLettersPerNum(null);
+          } else {
+            setQaConvention(c.start);
+            setQaConvId(c.id);
+            setQaLettersPerNum(c.lettersPerNum || null);
+          }
+        },
+        style: {
+          padding: "5px 10px",
+          borderRadius: 6,
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+          border: "1px solid",
+          fontFamily: "'IBM Plex Mono',monospace",
+          borderColor: active ? "var(--ink)" : "var(--rule)",
+          background: active ? "var(--ink)" : "var(--paper-2)",
+          color: active ? "var(--paper)" : "var(--ink)"
+        }
+      },
+      c.label
+    );
+  }), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      className: "inp mono",
+      value: qaConvention,
+      onChange: (e) => {
+        setQaConvention(e.target.value);
+        setQaConvId(null);
+        setQaLettersPerNum(null);
+        setQaErr("");
+      },
+      placeholder: "or custom\u2026",
+      style: { width: 90, fontSize: 12, padding: "5px 8px" }
+    }
+  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "60px 1fr 72px 72px auto", gap: 6, alignItems: "flex-end", marginBottom: 6 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginBottom: 3
+  } }, "Count"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      className: "inp",
+      type: "number",
+      min: 1,
+      max: 50,
+      value: qaCount2,
+      onChange: (e) => {
+        setQaCount2(e.target.value);
+        setQaErr("");
+      },
+      onKeyDown: (e) => e.key === "Enter" && apply(),
+      style: {
+        fontSize: 14,
+        padding: "7px 8px",
+        textAlign: "center",
+        fontFamily: "'IBM Plex Mono',monospace"
+      }
+    }
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginBottom: 3
+  } }, "Make / Model"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      className: "inp",
+      value: qaDesc2,
+      onChange: (e) => setQaDesc2(e.target.value),
+      onKeyDown: (e) => e.key === "Enter" && apply(),
+      placeholder: "Fischer\u2026",
+      style: { fontSize: 13, padding: "7px 10px" }
+    }
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginBottom: 3
+  } }, "Flex"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      className: "inp",
+      value: qaFlex,
+      onChange: (e) => setQaFlex(e.target.value),
+      onKeyDown: (e) => e.key === "Enter" && apply(),
+      placeholder: "47",
+      style: { fontSize: 13, padding: "7px 8px" }
+    }
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    fontSize: 10,
+    color: "var(--ink-faint)",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginBottom: 3
+  } }, "Grind"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      className: "inp",
+      value: qaGrind,
+      onChange: (e) => setQaGrind(e.target.value),
+      onKeyDown: (e) => e.key === "Enter" && apply(),
+      placeholder: "HF3",
+      style: { fontSize: 13, padding: "7px 8px" }
+    }
+  )), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "btn",
+      onClick: apply,
+      style: { fontSize: 13, padding: "8px 14px", flexShrink: 0 }
+    },
+    "Add"
+  )), preview.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, lineHeight: 1.6, color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--blue)", fontWeight: 700 } }, preview.join("  "), previewSuffix), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 6 } }, "(", count, " skis)")), qaErr && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--red)", marginTop: 4 } }, qaErr));
+}
 function FleetCard({ fleet, onChange, onDelete }) {
   const [expanded, setExpanded] = useState(true);
   function generateIdSequence2(startId, count, lettersPerNum = 26) {
@@ -13434,193 +13626,15 @@ function FleetCard({ fleet, onChange, onDelete }) {
       rows: 2,
       style: { marginTop: 4, marginBottom: 8 }
     }
-  ), (() => {
-    const [qaCount2, setQaCount2] = React.useState("8");
-    const [qaConvention, setQaConvention] = React.useState("");
-    const [qaLettersPerNum, setQaLettersPerNum] = React.useState(null);
-    const [qaDesc2, setQaDesc2] = React.useState("");
-    const [qaFlex, setQaFlex] = React.useState("");
-    const [qaGrind, setQaGrind] = React.useState("");
-    const [qaErr, setQaErr] = React.useState("");
-    const CONVENTIONS = [
-      { label: "1a, 1b, 2a\u2026", start: "1a", lettersPerNum: 2 },
-      { label: "1a, 1b, 1c, 2a\u2026", start: "1a", lettersPerNum: 3 },
-      { label: "A1, A2, B1\u2026", start: "A1", lettersPerNum: null },
-      { label: "A, B, C\u2026", start: "A", lettersPerNum: null },
-      { label: "1, 2, 3\u2026", start: "1", lettersPerNum: null }
-    ];
-    const existingSkis = fleet.skis.filter((s) => s.id);
-    const autoStart = existingSkis.length > 0 ? nextSkiId(existingSkis) : qaConvention || "A1";
-    const resolvedStart = (qaConvention || autoStart).toUpperCase();
-    const count = Math.min(Math.max(parseInt(qaCount2) || 0, 1), 50);
-    const lpm = qaLettersPerNum;
-    const preview = resolvedStart ? generateIdSequence2(resolvedStart, Math.min(count, 8), lpm || 26) : [];
-    const previewSuffix = count > 8 ? ` \u2026 ${generateIdSequence2(resolvedStart, count, lpm || 26).slice(-1)[0]}` : "";
-    function apply() {
-      setQaErr("");
-      if (!count) {
-        setQaErr("Enter a number of skis.");
-        return;
-      }
-      const ids = generateIdSequence2(resolvedStart, count, qaLettersPerNum || 26);
-      const existingIds = new Set(fleet.skis.map((s) => (s.id || "").toUpperCase()));
-      const dupes = ids.filter((id) => existingIds.has(id));
-      if (dupes.length) {
-        setQaErr(`IDs already exist: ${dupes.slice(0, 4).join(", ")}${dupes.length > 4 ? " \u2026" : ""}`);
-        return;
-      }
-      const newSkis = ids.map((id) => ({
-        id,
-        make: qaDesc2.trim(),
-        flex: qaFlex.trim(),
-        grind: qaGrind.trim(),
-        grindDate: "",
-        condition: "",
-        serviceFlag: "",
-        notes: ""
-      }));
-      onChange({ ...fleet, skis: [...fleet.skis, ...newSkis] });
-      setQaCount2("8");
-      setQaConvention("");
-      setQaLettersPerNum(null);
-      setQaDesc2("");
-      setQaFlex("");
-      setQaGrind("");
-      setQaErr("");
+  ), /* @__PURE__ */ React.createElement(
+    FleetQuickAdd,
+    {
+      fleet,
+      onChange,
+      generateIdSequence: generateIdSequence2,
+      nextSkiId
     }
-    return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement(Lbl, { style: { marginBottom: 6 } }, "Quick Add"), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: {
-      fontSize: 10,
-      color: "var(--ink-faint)",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em",
-      marginBottom: 5
-    } }, "Naming convention"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, flexWrap: "wrap" } }, CONVENTIONS.map((c) => {
-      const active = qaConvention.toUpperCase() === c.start.toUpperCase();
-      return /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          key: c.start,
-          onClick: () => {
-            if (active) {
-              setQaConvention("");
-              setQaLettersPerNum(null);
-            } else {
-              setQaConvention(c.start);
-              setQaLettersPerNum(c.lettersPerNum || null);
-            }
-          },
-          style: {
-            padding: "5px 10px",
-            borderRadius: 6,
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-            border: "1px solid",
-            fontFamily: "'IBM Plex Mono',monospace",
-            borderColor: active ? "var(--ink)" : "var(--rule)",
-            background: active ? "var(--ink)" : "var(--paper-2)",
-            color: active ? "var(--paper)" : "var(--ink)"
-          }
-        },
-        c.label
-      );
-    }), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        className: "inp mono",
-        value: qaConvention,
-        onChange: (e) => {
-          setQaConvention(e.target.value);
-          setQaLettersPerNum(null);
-          setQaErr("");
-        },
-        placeholder: "or custom\u2026",
-        style: { width: 90, fontSize: 12, padding: "5px 8px" }
-      }
-    ))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "60px 1fr 72px 72px auto", gap: 6, alignItems: "flex-end", marginBottom: 6 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
-      fontSize: 10,
-      color: "var(--ink-faint)",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em",
-      marginBottom: 3
-    } }, "Count"), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        className: "inp",
-        type: "number",
-        min: 1,
-        max: 50,
-        value: qaCount2,
-        onChange: (e) => {
-          setQaCount2(e.target.value);
-          setQaErr("");
-        },
-        onKeyDown: (e) => e.key === "Enter" && apply(),
-        style: {
-          fontSize: 14,
-          padding: "7px 8px",
-          textAlign: "center",
-          fontFamily: "'IBM Plex Mono',monospace"
-        }
-      }
-    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
-      fontSize: 10,
-      color: "var(--ink-faint)",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em",
-      marginBottom: 3
-    } }, "Make / Model"), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        className: "inp",
-        value: qaDesc2,
-        onChange: (e) => setQaDesc2(e.target.value),
-        onKeyDown: (e) => e.key === "Enter" && apply(),
-        placeholder: "Fischer\u2026",
-        style: { fontSize: 13, padding: "7px 10px" }
-      }
-    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
-      fontSize: 10,
-      color: "var(--ink-faint)",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em",
-      marginBottom: 3
-    } }, "Flex"), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        className: "inp",
-        value: qaFlex,
-        onChange: (e) => setQaFlex(e.target.value),
-        onKeyDown: (e) => e.key === "Enter" && apply(),
-        placeholder: "47",
-        style: { fontSize: 13, padding: "7px 8px" }
-      }
-    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
-      fontSize: 10,
-      color: "var(--ink-faint)",
-      textTransform: "uppercase",
-      letterSpacing: "0.05em",
-      marginBottom: 3
-    } }, "Grind"), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        className: "inp",
-        value: qaGrind,
-        onChange: (e) => setQaGrind(e.target.value),
-        onKeyDown: (e) => e.key === "Enter" && apply(),
-        placeholder: "HF3",
-        style: { fontSize: 13, padding: "7px 8px" }
-      }
-    )), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        className: "btn",
-        onClick: apply,
-        style: { fontSize: 13, padding: "8px 14px", flexShrink: 0 }
-      },
-      "Add"
-    )), preview.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, lineHeight: 1.6, color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--blue)", fontWeight: 700 } }, preview.join("  "), previewSuffix), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 6 } }, "(", count, " skis)")), qaErr && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--red)", marginTop: 4 } }, qaErr));
-  })(), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement(
     "button",
     {
       className: "btn-ghost",
@@ -20292,7 +20306,7 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
   }
   const { alarmTest, dismissAlarm, snooze } = useDeadlines(session.tests, handleSnooze);
   if (activeTestId) {
-    const test = (session.tests || []).find((t) => t.id === activeTestId);
+    const test = useMemo(() => (session.tests || []).find((t) => t.id === activeTestId) || null, [session.tests, activeTestId]);
     if (!test) return null;
     return /* @__PURE__ */ React.createElement(TestViewErrorBoundary, { test, onBack: () => setActiveTestId(null) }, /* @__PURE__ */ React.createElement(
       TestView,
@@ -20825,7 +20839,7 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
   }, []);
   useScheduleAlerts(event.schedule, onScheduleAlert);
   if (activeSessionId) {
-    const sess = (event.sessions || []).find((s) => s.id === activeSessionId);
+    const sess = useMemo(() => (event.sessions || []).find((s) => s.id === activeSessionId) || null, [event.sessions, activeSessionId]);
     if (!sess) return null;
     return /* @__PURE__ */ React.createElement(
       SessionView,
@@ -21489,8 +21503,9 @@ function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore
     "Not sure where to start? See how it works \u2192"
   ))) : visible.map((ev) => {
     const w = ev.weather;
-    const winCount = (ev.sessions || []).flatMap((s) => s.tests || []).filter((t) => t.skis?.some((s) => s.standing === "Winner")).length;
-    const testCount = (ev.sessions || []).flatMap((s) => s.tests || []).length;
+    const allTests = (ev.sessions || []).flatMap((s) => s.tests || []);
+    const winCount = allTests.filter((t) => t.skis?.some((s) => s.standing === "Winner")).length;
+    const testCount = allTests.length;
     return /* @__PURE__ */ React.createElement("div", { key: ev.id, style: { marginBottom: 10, position: "relative" } }, /* @__PURE__ */ React.createElement(
       "div",
       {
@@ -21515,9 +21530,9 @@ function Home({ events, onNew, onOpen, onDelete, useCelsius, teamCode, onRestore
         "\xD7"
       ))),
       (() => {
-        const allTests = (ev.sessions || []).flatMap((s) => s.tests || []);
-        const glideWins = allTests.filter((t) => (t.category === "glide" || t.category === "glide-out") && t.skis?.some((s) => s.standing === "Winner")).map((t) => t.skis.find((s) => s.standing === "Winner")).filter((s) => s?.product);
-        const kickWins = allTests.filter((t) => t.category === "kick" && t.skis?.some((s) => s.standing === "Winner")).map((t) => t.skis.find((s) => s.standing === "Winner")).filter((s) => s?.product);
+        const allTests2 = (ev.sessions || []).flatMap((s) => s.tests || []);
+        const glideWins = allTests2.filter((t) => (t.category === "glide" || t.category === "glide-out") && t.skis?.some((s) => s.standing === "Winner")).map((t) => t.skis.find((s) => s.standing === "Winner")).filter((s) => s?.product);
+        const kickWins = allTests2.filter((t) => t.category === "kick" && t.skis?.some((s) => s.standing === "Winner")).map((t) => t.skis.find((s) => s.standing === "Winner")).filter((s) => s?.product);
         const topWins = [
           ...glideWins.slice(0, 1).map((s) => ({ ...s, cat: "Glide" })),
           ...kickWins.slice(0, 1).map((s) => ({ ...s, cat: "Kick" }))
