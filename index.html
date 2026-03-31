@@ -11096,43 +11096,49 @@ function Lbl({ children, style }) {
 function Hr({ style }) {
   return /* @__PURE__ */ React.createElement("hr", { className: "divider", style });
 }
-function BackBtn({ onClick, label = "Back", onHome, homeLabel = "Home", crumbs = null }) {
-  if (crumbs && crumbs.length > 0) {
-    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 0, flexWrap: "nowrap", overflow: "hidden" } }, crumbs.map((c, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", flexShrink: i < crumbs.length - 1 ? 0 : 1, minWidth: 0 } }, i > 0 && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)", margin: "0 3px", flexShrink: 0 } }, "\u203A"), i < crumbs.length - 1 ? /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: c.onClick,
-        className: "btn-text",
-        style: {
-          fontSize: 11,
-          padding: "4px 2px",
-          color: "var(--ink-faint)",
-          flexShrink: 0,
-          whiteSpace: "nowrap"
-        }
-      },
-      c.label
-    ) : /* @__PURE__ */ React.createElement("span", { style: {
-      fontSize: 11,
-      fontWeight: 700,
-      color: "var(--ink)",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      padding: "4px 2px",
-      maxWidth: 140
-    } }, c.label))));
-  }
-  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1 } }, /* @__PURE__ */ React.createElement("button", { onClick, className: "btn-text", style: { fontSize: 14, padding: "4px 0" } }, "\u2190 ", label), onHome && /* @__PURE__ */ React.createElement(
+function PathLine({ crumbs = [] }) {
+  if (!crumbs || crumbs.length < 2) return null;
+  return /* @__PURE__ */ React.createElement("div", { style: {
+    padding: "4px 16px 0",
+    display: "flex",
+    alignItems: "center",
+    gap: 0,
+    borderBottom: "none",
+    background: "var(--paper)"
+  } }, crumbs.map((c, i) => /* @__PURE__ */ React.createElement("span", { key: i, style: { display: "flex", alignItems: "center", minWidth: 0 } }, i > 0 && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "var(--rule)", margin: "0 4px", flexShrink: 0 } }, "\u203A"), c.onClick ? /* @__PURE__ */ React.createElement(
     "button",
     {
-      onClick: onHome,
+      onClick: c.onClick,
       className: "btn-text",
-      style: { fontSize: 10, padding: "0 0 2px", color: "var(--ink-faint)" }
+      style: {
+        fontSize: 10,
+        padding: "2px 0",
+        color: "var(--ink-faint)",
+        fontFamily: "'IBM Plex Mono',monospace",
+        letterSpacing: "0.01em",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        maxWidth: 120,
+        flexShrink: 1
+      }
     },
-    "\u2302 ",
-    homeLabel
-  ));
+    c.label
+  ) : /* @__PURE__ */ React.createElement("span", { style: {
+    fontSize: 10,
+    color: "var(--ink-mid)",
+    fontWeight: 600,
+    fontFamily: "'IBM Plex Mono',monospace",
+    letterSpacing: "0.01em",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: 160,
+    flexShrink: 1
+  } }, c.label))));
+}
+function BackBtn({ onClick, label = "Back" }) {
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("button", { onClick, className: "btn-text", style: { fontSize: 14, padding: "4px 0" } }, "\u2190 ", label));
 }
 function TI({ label, value, onChange, placeholder, autoFocus, style, mic }) {
   const [local, setLocal] = useState(value || "");
@@ -18567,12 +18573,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       },
       onClose: () => setCopyingInTest(false)
     }
-  ), /* @__PURE__ */ React.createElement("div", { className: "view-header no-print" }, /* @__PURE__ */ React.createElement(BackBtn, { crumbs: [
-    { label: "Home", onClick: onGoHome },
-    { label: event?.name || "Event", onClick: onGoHome },
-    { label: session?.name || "Session", onClick: onBack },
-    { label: test.name || "Test" }
-  ] }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
+  ), /* @__PURE__ */ React.createElement("div", { className: "view-header no-print" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack, label: "Session" }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: {
     fontSize: 11,
     color: "var(--ink-faint)",
     letterSpacing: "0.06em",
@@ -18703,7 +18704,11 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
         onUpdate?.({ ...test, _voiceCondition: { field, value } });
       }
     }
-  )), /* @__PURE__ */ React.createElement("div", { className: "tab-bar no-print" }, TABS.map((t) => /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement(PathLine, { crumbs: [
+    { label: event?.name || "Event", onClick: onGoHome },
+    { label: session?.name || "Session", onClick: onBack },
+    { label: test.name || "Test" }
+  ] }), /* @__PURE__ */ React.createElement("div", { className: "tab-bar no-print" }, TABS.map((t) => /* @__PURE__ */ React.createElement(
     "button",
     {
       key: t.id,
@@ -20428,11 +20433,10 @@ function SessionView({ session, onUpdate, onBack, vocab, onVocabAdd, useCelsius,
       },
       onClose: () => setCopyingTest(null)
     }
-  ), /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header" }, /* @__PURE__ */ React.createElement(BackBtn, { crumbs: [
-    { label: "Home", onClick: onGoHome },
+  ), /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack, label: "Event" }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", textTransform: "uppercase", letterSpacing: "0.06em" } }, "Session"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, session.name)), /* @__PURE__ */ React.createElement(SessionTimer, { startedAt: session.startedAt || session.createdAt })), /* @__PURE__ */ React.createElement(PathLine, { crumbs: [
     { label: event?.name || "Event", onClick: onBack },
     { label: session.name || "Session" }
-  ] }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", textTransform: "uppercase", letterSpacing: "0.06em" } }, "Session"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, session.name)), /* @__PURE__ */ React.createElement(SessionTimer, { startedAt: session.startedAt || session.createdAt })), /* @__PURE__ */ React.createElement("div", { className: "tab-bar" }, TABS.map((t) => /* @__PURE__ */ React.createElement(
+  ] }), /* @__PURE__ */ React.createElement("div", { className: "tab-bar" }, TABS.map((t) => /* @__PURE__ */ React.createElement(
     "button",
     {
       key: t.id,
@@ -20943,10 +20947,7 @@ function EventView({ event, onUpdate, onBack, onRequestDelete, vocab, onVocabAdd
     { id: "compare", label: "Compare" },
     { id: "export", label: "Export" }
   ];
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header" }, /* @__PURE__ */ React.createElement(BackBtn, { crumbs: [
-    { label: "Home", onClick: onBack },
-    { label: event.name || "Event" }
-  ] }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", maxWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, event.name), event.location && /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, event.location)), confirmDelete ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", background: "var(--paper)" } }, /* @__PURE__ */ React.createElement("div", { className: "view-header" }, /* @__PURE__ */ React.createElement(BackBtn, { onClick: onBack, label: "Home" }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", maxWidth: 200 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 15, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, event.name), event.location && /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)" } }, event.location)), confirmDelete ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center" } }, /* @__PURE__ */ React.createElement(
     "button",
     {
       onClick: () => setConfirmDelete(false),
