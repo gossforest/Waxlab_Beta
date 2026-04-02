@@ -19207,9 +19207,13 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       return r.kick != null && r.glide != null ? r.kick + r.glide : r.glide ?? r.kick ?? null;
     };
     const max = isGlide ? 10 : 20;
-    const actedA = pairActed.has(idA);
-    const actedB = pairActed.has(idB);
+    const lastRound = (test.rounds || []).slice().reverse().find(
+      (r) => r.skiA === idA && r.skiB === idB || r.skiA === idB && r.skiB === idA
+    );
+    const actedA = pairActed.has(idA) || !!lastRound;
+    const actedB = pairActed.has(idB) || !!lastRound;
     const bothActed = actedA && actedB;
+    const oneActed = pairActed.has(idA) || pairActed.has(idB);
     const resultForSki = (ski) => {
       const rounds = test.rounds || [];
       for (let i = rounds.length - 1; i >= 0; i--) {
@@ -19357,14 +19361,14 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       fontWeight: 700,
       color: "var(--ink-faint)",
       letterSpacing: "0.14em"
-    } }, "VS"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, height: 1, background: "var(--rule)" } })), renderSkiPanel(skiB, actedB)), bothActed && /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "10px 14px 8px", borderBottom: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { style: {
+    } }, "VS"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, height: 1, background: "var(--rule)" } })), renderSkiPanel(skiB, actedB)), bothActed && /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "10px 14px 6px" } }, /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 10,
       fontWeight: 700,
       color: "var(--ink-faint)",
       textTransform: "uppercase",
       letterSpacing: "0.07em",
       fontFamily: "'IBM Plex Mono',monospace",
-      marginBottom: 7
+      marginBottom: 6
     } }, "How clear was the difference?"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, [
       { key: "clear", label: "Clear", color: "var(--green)" },
       { key: "close", label: "Close", color: "var(--amber)" },
@@ -19381,27 +19385,27 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
           },
           style: {
             flex: 1,
-            padding: "7px 4px",
+            padding: "8px 4px",
             border: "1px solid",
             borderColor: selected ? color : "var(--rule)",
             borderRadius: 7,
-            background: selected ? color + "18" : "transparent",
-            fontSize: 12,
+            background: selected ? color + "18" : "var(--paper)",
+            fontSize: 13,
             fontWeight: 700,
             cursor: "pointer",
             color: selected ? color : "var(--ink-faint)",
-            fontFamily: "'Inter',-apple-system,sans-serif",
-            transition: "all 0.1s"
+            fontFamily: "'Inter',-apple-system,sans-serif"
           }
         },
         label
       );
     }))), /* @__PURE__ */ React.createElement("div", { style: {
-      padding: "10px 14px",
+      padding: "8px 14px",
       display: "flex",
       justifyContent: "space-between",
-      alignItems: "center"
-    } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, roundState?.roundComplete ? "Round complete \u2713" : "Select next pair below"), nextSuggestion && /* @__PURE__ */ React.createElement(
+      alignItems: "center",
+      borderTop: "1px solid var(--rule)"
+    } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "var(--ink-faint)" } }, roundState?.roundComplete ? "Round complete \u2713" : "Next pair \u2192"), nextSuggestion && /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn-ghost",
