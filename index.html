@@ -18449,8 +18449,8 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       }
     } else {
       setPendingResult({ skiId, result: "elim" });
+      setPairActed((prev) => /* @__PURE__ */ new Set([...prev, skiId]));
     }
-    setPairActed((prev) => /* @__PURE__ */ new Set([...prev, skiId]));
   }
   function restore(skiId) {
     const rs = computeRoundState(test.rounds || [], test.skis || []);
@@ -19195,7 +19195,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       textTransform: "uppercase",
       letterSpacing: "0.06em"
     } }, "Round complete \u2713"));
-  })(), currentPair && currentPair.length === 2 && !winner && (() => {
+  })(), currentPair && currentPair.length === 2 && (() => {
     const [idA, idB] = currentPair;
     const skiA = (test.skis || []).find((s) => s.id === idA);
     const skiB = (test.skis || []).find((s) => s.id === idB);
