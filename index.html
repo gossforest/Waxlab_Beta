@@ -12268,6 +12268,22 @@ function useNotificationPermission() {
   }
   return { permission, request };
 }
+function useInstallPrompt() {
+  const [available, setAvailable] = useState(
+    typeof window !== "undefined" && !!window.__waxlabInstallAvailable
+  );
+  useEffect(() => {
+    const handler = () => setAvailable(true);
+    window.addEventListener("waxlab-install-available", handler);
+    return () => window.removeEventListener("waxlab-install-available", handler);
+  }, []);
+  async function prompt() {
+    if (!window.__waxlabInstallPrompt) return;
+    const outcome = await window.__waxlabInstallPrompt();
+    if (outcome === "accepted") setAvailable(false);
+  }
+  return { available, prompt };
+}
 function RadioIcon({ size = 16, color = "currentColor" }) {
   return /* @__PURE__ */ React.createElement(Svg, { size, color }, /* @__PURE__ */ React.createElement("path", { d: "M4.9 19.1C1 15.2 1 8.8 4.9 4.9" }), /* @__PURE__ */ React.createElement("path", { d: "M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" }), /* @__PURE__ */ React.createElement("circle", { cx: "12", cy: "12", r: "2" }), /* @__PURE__ */ React.createElement("path", { d: "M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" }), /* @__PURE__ */ React.createElement("path", { d: "M19.1 4.9C23 8.8 23 15.1 19.1 19" }));
 }
@@ -21917,6 +21933,7 @@ function TeamSelector({ onJoin }) {
   const [code, setCode] = useState(getHashTeam() || "");
   const [step, setStep] = useState("team");
   const [showHelp, setShowHelp] = useState(false);
+  const [installDismissed, setInstallDismissed] = useState(false);
   const recents = getRecentTeams();
   const isFirstTime = recents.length === 0;
   const MONO = "'IBM Plex Mono','SF Mono','Fira Code','Courier New',monospace";
@@ -21930,6 +21947,7 @@ function TeamSelector({ onJoin }) {
     setHashTeam(n);
     onJoin(n, mode);
   }
+  const { available: installAvailable, prompt: installPrompt } = useInstallPrompt();
   return /* @__PURE__ */ React.createElement("div", { style: {
     minHeight: "100vh",
     display: "flex",
@@ -21938,7 +21956,54 @@ function TeamSelector({ onJoin }) {
     alignItems: "center",
     background: "var(--paper)",
     padding: 24
-  } }, showHelp && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowHelp(false) }), /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 400 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+  } }, installAvailable && !installDismissed && /* @__PURE__ */ React.createElement("div", { style: {
+    position: "fixed",
+    bottom: 24,
+    left: 16,
+    right: 16,
+    zIndex: 300,
+    background: "var(--ink)",
+    color: "var(--paper)",
+    borderRadius: 12,
+    padding: "14px 16px",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.2)"
+  } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700 } }, "Add WaxLab to home screen"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, opacity: 0.65, marginTop: 2 } }, "Works offline \xB7 no app store needed")), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: installPrompt,
+      style: {
+        background: "var(--paper)",
+        color: "var(--ink)",
+        border: "none",
+        borderRadius: 8,
+        padding: "8px 14px",
+        fontSize: 12,
+        fontWeight: 700,
+        cursor: "pointer",
+        flexShrink: 0
+      }
+    },
+    "Install"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setInstallDismissed(true),
+      style: {
+        background: "none",
+        border: "none",
+        color: "var(--paper)",
+        opacity: 0.5,
+        fontSize: 18,
+        cursor: "pointer",
+        lineHeight: 1,
+        padding: "0 2px"
+      }
+    },
+    "\xD7"
+  )), showHelp && /* @__PURE__ */ React.createElement(OnboardingOverlay, { onDone: () => setShowHelp(false) }), /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 400 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 20 } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: "0.12em",

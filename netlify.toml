@@ -31,6 +31,24 @@
   [headers.values]
     Cache-Control = "no-store"
 
+# Service worker must never be cached — stale SW = users stuck on old version
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate"
+
+# Manifest can be cached briefly
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
+# Icons can be cached long-term
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
 # SPA catch-all — must be last
 [[redirects]]
   from   = "/*"

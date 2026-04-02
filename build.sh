@@ -15,6 +15,61 @@ window.WAXLAB_CONFIG = {
 };
 CONFIGEOF
 
+echo "Injecting PWA manifest + service worker registration into index.html..."
+
+# Inject <link rel="manifest"> and SW registration into <head>
+# Uses node to do the string insertion reliably
+node -e "
+const fs = require('fs');
+let html = fs.readFileSync('index.html', 'utf8');
+
+// Add manifest link if not already present
+if (!html.includes('manifest.json')) {
+  html = html.replace(
+    '<meta charset',
+    '<link rel=\"manifest\" href=\"/manifest.json\">\n  <meta name=\"theme-color\" content=\"#111111\">\n  <meta name=\"apple-mobile-web-app-capable\" content=\"yes\">\n  <meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\">\n  <link rel=\"apple-touch-icon\" href=\"/icons/icon-192.png\">\n  <meta charset'
+  );
+}
+
+// Add SW registration + install banner script before </body> if not present
+if (!html.includes('serviceWorker')) {
+  const swScript = \`
+<script>
+// Service worker registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(r => console.log('SW registered:', r.scope))
+      .catch(e => console.warn('SW registration failed:', e));
+  });
+}
+
+// Install banner — capture beforeinstallprompt, show our own UI trigger
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  // Signal to React app that install is available
+  window.__waxlabInstallAvailable = true;
+  window.dispatchEvent(new CustomEvent('waxlab-install-available'));
+});
+
+window.__waxlabInstallPrompt = async function() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  window.__waxlabInstallAvailable = false;
+  return outcome;
+};
+</script>\`;
+  html = html.replace('</body>', swScript + '\n</body>');
+}
+
+fs.writeFileSync('index.html', html);
+console.log('PWA injection done.');
+"
+
 echo "Done."
 echo "  SUPABASE_URL:      ${SUPABASE_URL:+set}${SUPABASE_URL:-NOT SET}"
 echo "  SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:+set}${SUPABASE_ANON_KEY:-NOT SET}"
