@@ -13819,26 +13819,42 @@ function calcGlideOutResults(comparisons, skis) {
     const bCm = c.legB?.cmAhead ?? null;
     if (aCm == null || bCm == null) return;
     const netA = (aCm - bCm) / 2;
-    if (!totals[c.skiA]) totals[c.skiA] = { totalNet: 0, count: 0 };
-    if (!totals[c.skiB]) totals[c.skiB] = { totalNet: 0, count: 0 };
+    if (!totals[c.skiA]) totals[c.skiA] = { totalNet: 0, count: 0, vals: [] };
+    if (!totals[c.skiB]) totals[c.skiB] = { totalNet: 0, count: 0, vals: [] };
     totals[c.skiA].totalNet += netA;
     totals[c.skiA].count += 1;
+    totals[c.skiA].vals.push(netA);
     totals[c.skiB].totalNet -= netA;
     totals[c.skiB].count += 1;
+    totals[c.skiB].vals.push(-netA);
   });
-  const entries = Object.entries(totals).map(([id, { totalNet, count }]) => ({ id, avg: totalNet / count, count })).sort((a, b) => b.avg - a.avg);
+  function stdDev(vals) {
+    if (vals.length < 2) return null;
+    const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+    const variance = vals.reduce((s, v) => s + (v - mean) ** 2, 0) / (vals.length - 1);
+    return Math.sqrt(variance);
+  }
+  const entries = Object.entries(totals).map(([id, { totalNet, count, vals }]) => {
+    const avg = totalNet / count;
+    const sd = stdDev(vals);
+    return { id, avg, count, sd };
+  }).sort((a, b) => b.avg - a.avg);
   if (!entries.length) return [];
   const best = entries[0].avg;
-  return entries.map((e) => ({
-    skiId: e.id,
-    product: skis?.find((s) => s.id === e.id)?.product || "",
-    layers: skis?.find((s) => s.id === e.id)?.layers || [],
-    application: skis?.find((s) => s.id === e.id)?.application || "",
-    cmGap: Math.round((best - e.avg) * 10) / 10,
-    compCount: e.count,
-    // Confidence: gap vs noise — flag if leading by < 1cm net with < 2 comparisons
-    uncertain: best - e.avg < 1 && e.count < 2
-  }));
+  return entries.map((e) => {
+    const gap = best - e.avg;
+    const uncertain = e.count < 2 || e.sd != null && gap < 2 * e.sd && gap < 2;
+    return {
+      skiId: e.id,
+      product: skis?.find((s) => s.id === e.id)?.product || "",
+      layers: skis?.find((s) => s.id === e.id)?.layers || [],
+      application: skis?.find((s) => s.id === e.id)?.application || "",
+      cmGap: Math.round(gap * 10) / 10,
+      compCount: e.count,
+      stdDev: e.sd != null ? Math.round(e.sd * 10) / 10 : null,
+      uncertain
+    };
+  });
 }
 function suggestNextComparison(comparisons, skis) {
   const ids = (skis || []).filter((s) => s.standing !== "Eliminated").map((s) => s.id);
@@ -14253,11 +14269,11 @@ function GlideOutResults_({ test, onUpdate, isBlind, useCelsius }) {
         border: "1px solid var(--amber)",
         borderRadius: 3,
         padding: "1px 4px"
-      } }, "~uncertain")), !isBlind && layers.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 2 } }, /* @__PURE__ */ React.createElement(SkiLayerStack, { layers, isBlind: false }))), /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
+      } }, "~uncertain")), !isBlind && layers.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 2 } }, /* @__PURE__ */ React.createElement(SkiLayerStack, { layers, isBlind: false }))), /* @__PURE__ */ React.createElement("div", { style: { flexShrink: 0, textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: {
         fontSize: 14,
         fontWeight: 800,
-        color: isWin ? "var(--green)" : r.cmGap < 1 ? "var(--amber)" : "var(--ink-mid)"
-      } }, isWin ? "0 cm" : `+${r.cmGap.toFixed(1)} cm`))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, paddingLeft: 24 } }, /* @__PURE__ */ React.createElement("div", { style: {
+        color: isWin ? "var(--green)" : r.uncertain ? "var(--amber)" : "var(--ink-mid)"
+      } }, isWin ? "0 cm" : `+${r.cmGap.toFixed(1)} cm`), r.stdDev != null && /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 9, color: "var(--ink-faint)", marginTop: 1 } }, "\xB1", r.stdDev.toFixed(1), " sd")))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, paddingLeft: 24 } }, /* @__PURE__ */ React.createElement("div", { style: {
         flex: 1,
         height: 10,
         background: "var(--paper-3)",
@@ -14288,7 +14304,7 @@ function GlideOutResults_({ test, onUpdate, isBlind, useCelsius }) {
         textAlign: "right",
         flexShrink: 0
       } }, r.compCount, "\u2713")));
-    })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 6, paddingLeft: 4, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)" } }, "Bar = cm behind winner \xB7 \u2713 = comparisons \xB7 ~uncertain = <1cm with <2 runs")));
+    })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 6, paddingLeft: 4, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "var(--ink-faint)" } }, "Bar = cm behind winner \xB7 \u2713 = comparisons \xB7 \xB1sd = std dev \xB7 ~uncertain = gap within noise or <2 runs")));
   }
   function MatchupMatrix() {
     if (completedComps.length === 0) return null;
@@ -14304,7 +14320,12 @@ function GlideOutResults_({ test, onUpdate, isBlind, useCelsius }) {
     Object.entries(matchMap).forEach(([key, runs]) => {
       const avgNet = runs.reduce((s, r) => s + r.netA, 0) / runs.length;
       const [a, b] = key.split("|");
-      avgMap[key] = { a, b, avgNet, runs: runs.length };
+      let sd = null;
+      if (runs.length >= 2) {
+        const variance = runs.reduce((s, r) => s + (r.netA - avgNet) ** 2, 0) / (runs.length - 1);
+        sd = Math.round(Math.sqrt(variance) * 10) / 10;
+      }
+      avgMap[key] = { a, b, avgNet, runs: runs.length, sd };
     });
     return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement(Lbl, null, "Head-to-Head Results"), /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: {
       padding: "6px 10px",
@@ -14360,8 +14381,8 @@ function GlideOutResults_({ test, onUpdate, isBlind, useCelsius }) {
         fontSize: 12,
         fontWeight: 700,
         color: won ? "var(--green)" : lost ? "var(--red)" : "var(--amber)"
-      } }, even ? "~" : (won ? "+" : "") + netRow.toFixed(1)), !even && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "var(--ink-faint)" } }, uncertain ? "cm ~" : "cm", m.runs > 1 ? ` \xD7${m.runs}` : ""));
-    })))))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 6 } }, "+ = row faster \xB7 \u2212 = row slower \xB7 ~ = <0.4cm no diff \xB7 ? = not tested \xB7 \xD7N = N runs"));
+      } }, even ? "~" : (won ? "+" : "") + netRow.toFixed(1)), !even && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "var(--ink-faint)" } }, uncertain ? "cm ~" : "cm", m.runs > 1 ? ` \xD7${m.runs}` : "", m.sd != null ? ` \xB1${m.sd.toFixed(1)}` : ""));
+    })))))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 6 } }, "+ = row faster \xB7 \u2212 = row slower \xB7 ~ = <0.4cm \xB7 ? = not tested \xB7 \xD7N = N runs \xB7 \xB1sd = std dev"));
   }
   function ComparisonBreakdown() {
     if (completedComps.length === 0) return null;
@@ -17191,6 +17212,55 @@ function SkiCard({ ski, isGlide, isBlind, onRatingChange, onPhotoSave, teamCode,
     }
   )));
 }
+function bracketConfidence(winnerId, rounds, allSkis) {
+  const myRounds = (rounds || []).filter(
+    (r) => !r.restore && (r.skiA === winnerId || r.skiB === winnerId)
+  );
+  if (!myRounds.length) return { level: "low", reasons: ["No matchup data recorded"] };
+  const wins = myRounds.filter((r) => r.winner === winnerId && !r.tie).length;
+  const ties = myRounds.filter((r) => r.tie).length;
+  const total = myRounds.length;
+  const winRate = wins / total;
+  const feelCounts = { "clear": 0, "close": 0, "coin-flip": 0, unrated: 0 };
+  myRounds.forEach((r) => {
+    const fc = r.feelConfidence;
+    if (fc === "clear" || fc === "close" || fc === "coin-flip") feelCounts[fc]++;
+    else feelCounts.unrated++;
+  });
+  const ratedCount = feelCounts["clear"] + feelCounts["close"] + feelCounts["coin-flip"];
+  const feelScore = ratedCount > 0 ? (feelCounts["clear"] * 1 + feelCounts["close"] * 0.4 + feelCounts["coin-flip"] * 0) / ratedCount : null;
+  const opponents = new Set(myRounds.map((r) => r.skiA === winnerId ? r.skiB : r.skiA));
+  const nSkis = (allSkis || []).filter((s) => s.standing !== "Active").length;
+  const coveredField = opponents.size >= Math.max(1, nSkis - 1);
+  const reasons = [];
+  let score = 0;
+  if (winRate === 1 && ties === 0) score += 2;
+  else if (winRate >= 0.5 && ties === 0) score += 1;
+  else if (ties > 0) reasons.push(`Tied ${ties} matchup${ties > 1 ? "s" : ""} \u2014 result may not hold on retest`);
+  else reasons.push("Won fewer than half of recorded matchups");
+  if (total >= 3) score += 1;
+  else if (total === 1) reasons.push("Only one matchup recorded \u2014 small sample");
+  if (coveredField && nSkis >= 3) score += 1;
+  else if (nSkis >= 4 && !coveredField) reasons.push("Did not face all skis in the bracket");
+  if (feelScore !== null) {
+    if (feelScore >= 0.8) score += 1;
+    else if (feelScore >= 0.4) {
+    } else {
+      score = Math.max(0, score - 1);
+      const coinFlips = feelCounts["coin-flip"];
+      const close = feelCounts["close"];
+      if (coinFlips > 0) reasons.push(`${coinFlips} matchup${coinFlips > 1 ? "s" : ""} rated Coin flip \u2014 consider retesting`);
+      else if (close > 0) reasons.push(`${close} matchup${close > 1 ? "s" : ""} rated Close \u2014 margin was narrow`);
+    }
+  }
+  const level = score >= 4 ? "high" : score >= 2 ? "moderate" : "low";
+  if (level === "high" && !reasons.length) {
+    const clearLabel = feelCounts["clear"] > 0 ? " with clear margins" : "";
+    reasons.push(`Unbeaten across all matchups${clearLabel}`);
+  }
+  if (level === "moderate" && !reasons.length) reasons.push("Won bracket but some matchups were close");
+  return { level, wins, ties, total, winRate, feelCounts, reasons };
+}
 const TournamentFlow = React.memo(TournamentFlow_);
 function TournamentFlow_({ test, isGlide, isBlind }) {
   const rawMatches = test.rounds || [];
@@ -18245,6 +18315,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
   const [undoVisible, setUndoVisible] = useState(false);
   const [currentPair, setCurrentPair] = useState(null);
   const [pairActed, setPairActed] = useState(/* @__PURE__ */ new Set());
+  const [feelConfidence, setFeelConfidence] = useState(null);
   const [pendingResult, setPendingResult] = useState(null);
   const [loserPair, setLoserPair] = useState(null);
   const [showLoserBracket, setShowLoserBracket] = useState(false);
@@ -18291,6 +18362,19 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
     setPendingResult(null);
     setCurrentPair(null);
     setPendingWinner(null);
+  }
+  function patchLastRoundConfidence(idA, idB, confidence) {
+    const rounds = test.rounds || [];
+    for (let i = rounds.length - 1; i >= 0; i--) {
+      const r = rounds[i];
+      if (r.skiA === idA && r.skiB === idB || r.skiA === idB && r.skiB === idA) {
+        const patched = rounds.map(
+          (rr, j) => j === i ? { ...rr, feelConfidence: confidence } : rr
+        );
+        upd({ rounds: patched });
+        return;
+      }
+    }
   }
   function commitPairResult(winnerId, loserId, loserResult) {
     const snap = { skis: [...test.skis || []], rounds: [...test.rounds || []] };
@@ -18513,6 +18597,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
     setCurrentPair(ids);
     setPairActed(/* @__PURE__ */ new Set());
     setPendingResult(null);
+    setFeelConfidence(null);
   }
   function suggestPair(rs) {
     const unpaired = activeSki.filter((s) => rs && !rs.pairedThisRound.has(s.id));
@@ -18790,20 +18875,61 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
     const matchCount = (test.rounds || []).length;
     const beatCount = (test.skis || []).filter((s) => s.standing === "Eliminated").length;
     const comp = isGlide ? winner.ratings?.glide : winner.ratings?.kick != null && winner.ratings?.glide != null ? winner.ratings.kick + winner.ratings.glide : null;
+    const conf = bracketConfidence(winner.id, test.rounds, test.skis);
+    const confColor = conf.level === "high" ? "var(--green)" : conf.level === "moderate" ? "var(--amber)" : "var(--red)";
     return /* @__PURE__ */ React.createElement("div", { style: {
       padding: "14px 16px",
       background: "var(--paper-2)",
       borderRadius: 8,
       border: "2px solid var(--green)",
       marginBottom: 16
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: {
+    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: {
       fontSize: 10,
       fontWeight: 700,
       color: "var(--ink-mid)",
       textTransform: "uppercase",
-      letterSpacing: "0.08em",
-      marginBottom: 4
-    } }, "Winner"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800 } }, !isBlind ? winner.product || winner.id : winner.id), !isBlind && winner.id && winner.product && /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, winner.id), !isBlind && winner.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginTop: 2 } }, winner.application), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 6 } }, matchCount > 0 ? `${matchCount} round${matchCount !== 1 ? "s" : ""}` : "", beatCount > 0 ? `, beat ${beatCount} ski${beatCount !== 1 ? "s" : ""}` : ""), (() => {
+      letterSpacing: "0.08em"
+    } }, "Winner"), /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 9,
+      fontWeight: 800,
+      color: confColor,
+      background: confColor + "1a",
+      padding: "2px 7px",
+      borderRadius: 4,
+      fontFamily: "'IBM Plex Mono',monospace",
+      textTransform: "uppercase",
+      letterSpacing: "0.07em"
+    } }, conf.level, " confidence")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 800 } }, !isBlind ? winner.product || winner.id : winner.id), !isBlind && winner.id && winner.product && /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11, color: "var(--ink-faint)", marginTop: 1 } }, winner.id), !isBlind && winner.application && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-mid)", marginTop: 2 } }, winner.application), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 10, color: "var(--ink-faint)", marginTop: 6 } }, matchCount > 0 ? `${matchCount} round${matchCount !== 1 ? "s" : ""}` : "", beatCount > 0 ? `, beat ${beatCount} ski${beatCount !== 1 ? "s" : ""}` : "", conf.total > 0 ? ` \xB7 ${conf.wins}W ${conf.ties > 0 ? conf.ties + "T " : ""}/ ${conf.total} matchups` : ""), (conf.feelCounts?.["clear"] || 0) + (conf.feelCounts?.["close"] || 0) + (conf.feelCounts?.["coin-flip"] || 0) > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, marginTop: 5, flexWrap: "wrap" } }, conf.feelCounts["clear"] > 0 && /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      fontFamily: "'IBM Plex Mono',monospace",
+      color: "var(--green)",
+      background: "rgba(22,163,74,0.1)",
+      padding: "2px 7px",
+      borderRadius: 4
+    } }, conf.feelCounts["clear"], " clear"), conf.feelCounts["close"] > 0 && /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      fontFamily: "'IBM Plex Mono',monospace",
+      color: "var(--amber)",
+      background: "rgba(217,119,6,0.1)",
+      padding: "2px 7px",
+      borderRadius: 4
+    } }, conf.feelCounts["close"], " close"), conf.feelCounts["coin-flip"] > 0 && /* @__PURE__ */ React.createElement("span", { style: {
+      fontSize: 9,
+      fontWeight: 700,
+      fontFamily: "'IBM Plex Mono',monospace",
+      color: "var(--red)",
+      background: "rgba(220,38,38,0.08)",
+      padding: "2px 7px",
+      borderRadius: 4
+    } }, conf.feelCounts["coin-flip"], " coin flip")), conf.reasons.length > 0 && conf.level !== "high" && /* @__PURE__ */ React.createElement("div", { style: {
+      marginTop: 6,
+      padding: "6px 8px",
+      background: confColor + "12",
+      border: "1px solid " + confColor + "40",
+      borderRadius: 5
+    } }, conf.reasons.map((r, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { fontSize: 10, color: confColor, lineHeight: 1.5 } }, r))), (() => {
       const ties = (test.rounds || []).filter((r) => r.tie && (r.skiA === winner.id || r.skiB === winner.id));
       if (!ties.length) return null;
       const tieSkis = [...new Set(ties.map((r) => r.skiA === winner.id ? r.skiB : r.skiA))];
@@ -19230,7 +19356,46 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       fontWeight: 700,
       color: "var(--ink-faint)",
       letterSpacing: "0.14em"
-    } }, "VS"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, height: 1, background: "var(--rule)" } })), renderSkiPanel(skiB, actedB)), bothActed && /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { style: {
+    } }, "VS"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, height: 1, background: "var(--rule)" } })), renderSkiPanel(skiB, actedB)), bothActed && /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "10px 14px 8px", borderBottom: "1px solid var(--rule)" } }, /* @__PURE__ */ React.createElement("div", { style: {
+      fontSize: 10,
+      fontWeight: 700,
+      color: "var(--ink-faint)",
+      textTransform: "uppercase",
+      letterSpacing: "0.07em",
+      fontFamily: "'IBM Plex Mono',monospace",
+      marginBottom: 7
+    } }, "How clear was the difference?"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, [
+      { key: "clear", label: "Clear", color: "var(--green)" },
+      { key: "close", label: "Close", color: "var(--amber)" },
+      { key: "coin-flip", label: "Coin flip", color: "var(--red)" }
+    ].map(({ key, label, color }) => {
+      const selected = feelConfidence === key;
+      return /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          key,
+          onClick: () => {
+            setFeelConfidence(key);
+            patchLastRoundConfidence(idA, idB, key);
+          },
+          style: {
+            flex: 1,
+            padding: "7px 4px",
+            border: "1px solid",
+            borderColor: selected ? color : "var(--rule)",
+            borderRadius: 7,
+            background: selected ? color + "18" : "transparent",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            color: selected ? color : "var(--ink-faint)",
+            fontFamily: "'Inter',-apple-system,sans-serif",
+            transition: "all 0.1s"
+          }
+        },
+        label
+      );
+    }))), /* @__PURE__ */ React.createElement("div", { style: {
       padding: "10px 14px",
       display: "flex",
       justifyContent: "space-between",
