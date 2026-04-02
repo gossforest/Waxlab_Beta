@@ -18953,6 +18953,59 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
         letterSpacing: "0.07em",
         marginBottom: 3
       } }, "Tied during test \u2014 consider retesting"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--ink-mid)" } }, !isBlind ? winner.product || winner.id : winner.id, " tied with ", tieSkiLabels.join(", "), " \u2014 close enough to warrant a follow-up comparison."));
+    })(), (() => {
+      const finalRound = (test.rounds || []).slice().reverse().find(
+        (r) => r.winner === winner.id && !r.tie && !r.restore
+      );
+      if (!finalRound) return null;
+      const idA = finalRound.skiA;
+      const idB = finalRound.skiB;
+      const alreadyRated = finalRound.feelConfidence;
+      if (alreadyRated) return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5, marginTop: 5, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("span", { style: {
+        fontSize: 9,
+        fontWeight: 700,
+        fontFamily: "'IBM Plex Mono',monospace",
+        color: alreadyRated === "clear" ? "var(--green)" : alreadyRated === "close" ? "var(--amber)" : "var(--red)",
+        background: alreadyRated === "clear" ? "rgba(22,163,74,0.1)" : alreadyRated === "close" ? "rgba(217,119,6,0.1)" : "rgba(220,38,38,0.08)",
+        padding: "2px 7px",
+        borderRadius: 4,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em"
+      } }, "Final: ", alreadyRated));
+      return /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, marginBottom: 4 } }, /* @__PURE__ */ React.createElement("div", { style: {
+        fontSize: 9,
+        fontWeight: 700,
+        color: "var(--ink-faint)",
+        textTransform: "uppercase",
+        letterSpacing: "0.07em",
+        fontFamily: "'IBM Plex Mono',monospace",
+        marginBottom: 5
+      } }, "How clear was the final matchup?"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 5 } }, [
+        { key: "clear", label: "Clear", color: "var(--green)" },
+        { key: "close", label: "Close", color: "var(--amber)" },
+        { key: "coin-flip", label: "Coin flip", color: "var(--red)" }
+      ].map(({ key, label, color }) => /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          key,
+          onClick: () => {
+            patchLastRoundConfidence(idA, idB, key);
+          },
+          style: {
+            flex: 1,
+            padding: "6px 4px",
+            border: "1px solid var(--rule)",
+            borderRadius: 6,
+            background: "var(--paper)",
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: "pointer",
+            color: "var(--ink-faint)",
+            fontFamily: "'Inter',-apple-system,sans-serif"
+          }
+        },
+        label
+      ))));
     })(), test.completedAt && (() => {
       const c = test.completedConditions;
       const hasAir = c?.airTempF != null;
@@ -19196,7 +19249,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       textTransform: "uppercase",
       letterSpacing: "0.06em"
     } }, "Round complete \u2713"));
-  })(), currentPair && currentPair.length === 2 && (() => {
+  })(), currentPair && currentPair.length === 2 && !winner && (() => {
     const [idA, idB] = currentPair;
     const skiA = (test.skis || []).find((s) => s.id === idA);
     const skiB = (test.skis || []).find((s) => s.id === idB);
@@ -19207,13 +19260,13 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       return r.kick != null && r.glide != null ? r.kick + r.glide : r.glide ?? r.kick ?? null;
     };
     const max = isGlide ? 10 : 20;
-    const lastRound = (test.rounds || []).slice().reverse().find(
-      (r) => r.skiA === idA && r.skiB === idB || r.skiA === idB && r.skiB === idA
+    const currentRoundNum = roundState?.currentRound ?? 0;
+    const currentRoundRecord = (test.rounds || []).slice().reverse().find(
+      (r) => r.roundNum === currentRoundNum && (r.skiA === idA && r.skiB === idB || r.skiA === idB && r.skiB === idA)
     );
-    const actedA = pairActed.has(idA) || !!lastRound;
-    const actedB = pairActed.has(idB) || !!lastRound;
-    const bothActed = actedA && actedB;
-    const oneActed = pairActed.has(idA) || pairActed.has(idB);
+    const actedA = pairActed.has(idA) || !!currentRoundRecord && !pairActed.size;
+    const actedB = pairActed.has(idB) || !!currentRoundRecord && !pairActed.size;
+    const bothActed = pairActed.has(idA) && pairActed.has(idB) || !!currentRoundRecord;
     const resultForSki = (ski) => {
       const rounds = test.rounds || [];
       for (let i = rounds.length - 1; i >= 0; i--) {
