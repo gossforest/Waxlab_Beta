@@ -10613,6 +10613,7 @@ function copyTest(test, nameSuffix = " (copy)") {
     skis: (test.skis || []).map((ski) => ({
       id: ski.id,
       product: ski.product || "",
+      layers: ski.layers ? ski.layers.map((l) => ({ ...l, components: l.components ? l.components.map((c) => ({ ...c })) : [] })) : [],
       application: ski.application || "",
       waxForm: ski.waxForm || "",
       notes: ski.notes || "",
@@ -18407,6 +18408,7 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
   function advance(skiId) {
     const opponentId = currentPair ? currentPair.find((id) => id !== skiId) : null;
     if (!opponentId) return;
+    setPairActed((prev) => /* @__PURE__ */ new Set([...prev, skiId]));
     if (pendingResult && pendingResult.skiId === opponentId) {
       const oRes = pendingResult.result;
       if (oRes === "adv") {
@@ -18424,11 +18426,11 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
     } else {
       setPendingResult({ skiId, result: "adv" });
     }
-    setPairActed((prev) => /* @__PURE__ */ new Set([...prev, skiId]));
   }
   function eliminate(skiId) {
     const opponentId = currentPair ? currentPair.find((id) => id !== skiId) : null;
     if (!opponentId) return;
+    setPairActed((prev) => /* @__PURE__ */ new Set([...prev, skiId]));
     if (pendingResult && pendingResult.skiId === opponentId) {
       const oRes = pendingResult.result;
       if (oRes === "adv") {
@@ -18449,7 +18451,6 @@ function TestView({ test, onUpdate, onBack, vocab, onVocabAdd, useCelsius, onUni
       }
     } else {
       setPendingResult({ skiId, result: "elim" });
-      setPairActed((prev) => /* @__PURE__ */ new Set([...prev, skiId]));
     }
   }
   function restore(skiId) {
